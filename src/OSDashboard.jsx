@@ -4,23 +4,19 @@ import { Terminal, Cpu, Settings, X, Minus, Square, Code, Activity, Wifi, Batter
 import { SYSTEM_THEME, APPS } from './utils/constants.js';
 
 // Import all app components
-import BrowserApp from './components/BrowserApp.jsx';
-import LimeQuizApp from './components/LimeQuizApp.jsx';
-import AIAssistantApp from './components/AIAssistantApp.jsx';
-import TerminalApp from './components/TerminalApp.jsx';
-import RustGuideApp from './components/RustGuideApp.jsx';
-import DashboardApp from './components/DashboardApp.jsx';
-import SettingsApp from './components/SettingsApp.jsx';
+import ProtonMailApp from './components/ProtonMailApp.jsx';
+import ProtonVPNApp from './components/ProtonVPNApp.jsx';
+import SecureNotepadApp from './components/SecureNotepadApp.jsx';
+import ROSChecksApp from './components/ROSChecksApp.jsx';
+import DarkNetOpsApp from './components/DarkNetOpsApp.jsx';
 
 // Component mapping
 const COMPONENT_MAP = {
-  BrowserApp,
-  LimeQuizApp,
-  AIAssistantApp,
-  TerminalApp,
-  RustGuideApp,
-  DashboardApp,
-  SettingsApp,
+  ProtonMailApp,
+  ProtonVPNApp,
+  SecureNotepadApp,
+  ROSChecksApp,
+  DarkNetOpsApp,
 };
 
 // --- MAIN OS COMPONENT ---
