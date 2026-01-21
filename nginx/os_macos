@@ -1,0 +1,45 @@
+server {
+    listen 80;
+    server_name os.example.com;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name os.example.com;
+
+    # SSL configuration
+    ssl_certificate /usr/local/etc/nginx/ssl/os.example.com/fullchain.pem;
+    ssl_certificate_key /usr/local/etc/nginx/ssl/os.example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384;
+    ssl_prefer_server_ciphers off;
+
+    # Security headers
+    add_header Content-Security-Policy "frame-ancestors https://lumo.proton.me;" always;
+    add_header X-Frame-Options "" always;  # Disable X-Frame-Options
+
+    # Root directory for React SPA
+    root /usr/local/var/www/os;
+    index index.html;
+
+    # Handle React Router
+    location / {
+        try_files $uri /index.html;
+    }
+
+    # Proxy /enroll to Flask service
+    location /enroll {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Static assets
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}

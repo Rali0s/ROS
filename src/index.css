@@ -1,0 +1,43 @@
+/* LimeNet OS - Tailwind Base CSS Theme */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* LimeNet Color Theme Overrides */
+:root {
+  --ln-bg: #0f172a;         /* Deep slate/navy */
+  --ln-accent: #32cd32;     /* LimeGreen */
+  --ln-window: #1e293b;     /* Slate */
+  --ln-text: #e2e8f0;       /* Light Slate */
+  --ln-border: #334155;     /* Darker Slate */
+}
+
+body {
+  @apply bg-[var(--ln-bg)] text-[var(--ln-text)] font-sans;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #32cd32;
+  border-radius: 8px;
+  border: 2px solid #0f172a;
+}
+
+/* Fade-in animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
