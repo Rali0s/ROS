@@ -1,127 +1,130 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# LimeOS Auto-Install Rollout Script
-# Detects OS and installs dependencies for the LimeOS React application
+set -euo pipefail
 
-echo "🌿 LimeOS Auto-Install Rollout 🌿"
-echo "================================="
+APP_NAME="OSA Midnight Oil"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Detect OS
-OS=$(uname -s)
-echo "Detected OS: $OS"
+info() {
+  printf "\n[ROS] %s\n" "$1"
+}
 
-case "$OS" in
-    Linux)
-        echo "Installing dependencies for Linux..."
-        # Update package list
-        sudo apt update
-        # Install Node.js and npm
-        sudo apt install -y nodejs npm
-        # Install build essentials if needed
-        sudo apt install -y build-essential
-        ;;
+warn() {
+  printf "\n[ROS][warn] %s\n" "$1"
+}
+
+has_cmd() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+install_homebrew() {
+  info "Homebrew not found. Installing Homebrew..."
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  if [[ -x /opt/homebrew/bin/brew ]]; then
+    eval "$(/opt/homebrew/bin/brew shellenv)"
+  elif [[ -x /usr/local/bin/brew ]]; then
+    eval "$(/usr/local/bin/brew shellenv)"
+  fi
+}
+
+install_node_linux() {
+  if has_cmd apt-get; then
+    info "Installing Node.js and npm with apt..."
+    sudo apt-get update
+    sudo apt-get install -y nodejs npm build-essential curl
+  elif has_cmd dnf; then
+    info "Installing Node.js and npm with dnf..."
+    sudo dnf install -y nodejs npm gcc-c++ make curl
+  elif has_cmd pacman; then
+    info "Installing Node.js and npm with pacman..."
+    sudo pacman -Sy --noconfirm nodejs npm base-devel curl
+  elif has_cmd zypper; then
+    info "Installing Node.js and npm with zypper..."
+    sudo zypper install -y nodejs npm gcc-c++ make curl
+  else
+    warn "Unsupported Linux package manager. Install Node.js 18+ and npm manually, then rerun."
+    exit 1
+  fi
+}
+
+install_rust() {
+  if has_cmd rustup; then
+    info "Rustup already installed."
+  else
+    info "Installing Rust toolchain..."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+  fi
+
+  export PATH="$HOME/.cargo/bin:$PATH"
+
+  if has_cmd cargo; then
+    info "Installing wasm-pack (optional build helper)..."
+    cargo install wasm-pack || warn "wasm-pack install skipped. The web build still works without it."
+  else
+    warn "Cargo was not found after rustup install. Skipping wasm-pack."
+  fi
+}
+
+install_node_macos() {
+  if ! has_cmd brew; then
+    install_homebrew
+  fi
+
+  info "Installing Node.js with Homebrew..."
+  brew install node
+}
+
+verify_node() {
+  if ! has_cmd node || ! has_cmd npm; then
+    warn "Node.js and npm are required but were not found."
+    exit 1
+  fi
+
+  info "Node version: $(node --version)"
+  info "npm version: $(npm --version)"
+}
+
+main() {
+  info "Starting ${APP_NAME} installer"
+  info "Repository: ${REPO_ROOT}"
+
+  case "$(uname -s)" in
     Darwin)
-        echo "Installing dependencies for macOS..."
-        # Check if Homebrew is installed
-        if ! command -v brew &> /dev/null; then
-            echo "Installing Homebrew..."
-            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-        fi
-        # Install Node.js
-        brew install node
-        # Install NGINX
-        brew install nginx
-        ;;
+      install_node_macos
+      ;;
+    Linux)
+      install_node_linux
+      ;;
     *)
-        echo "Unsupported OS: $OS"
-        echo "Please install Node.js manually from https://nodejs.org/"
-        exit 1
-        ;;
-esac
+      warn "This script supports macOS and Linux. Use install.bat on Windows."
+      exit 1
+      ;;
+  esac
 
-# Verify Node.js and npm installation
-echo "Verifying Node.js and npm..."
-node --version
-npm --version
+  verify_node
+  install_rust
 
-# Install project dependencies
-echo "Installing project dependencies..."
-npm install
+  cd "${REPO_ROOT}"
 
-# Install Rust toolchain
-echo "Installing Rust toolchain..."
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-echo "⚠️  WARNING: Be sure to add $HOME/.cargo/bin to your PATH to be able to run the installed binaries"
-echo "   You can do this by adding the following line to your ~/.bashrc or ~/.zshrc:"
-echo "   export PATH=\"\$HOME/.cargo/bin:\$PATH\""
+  info "Installing project dependencies..."
+  npm install
 
-# Install wasm-pack for WebAssembly compilation
-echo "Installing wasm-pack..."
-$HOME/.cargo/bin/cargo install wasm-pack
+  info "Running production build..."
+  npm run build
 
-# Build the application
-echo "Building LimeOS..."
-npm run build
+  cat <<'EOF'
 
-case "$OS" in
-    Linux)
-        # Deploy to web directory
-        echo "Deploying to /var/www/os..."
-        sudo mkdir -p /var/www/os
-        sudo cp -r dist/* /var/www/os/
-        sudo chown -R www-data:www-data /var/www/os
+[ROS] Install complete.
 
-        # Install and configure NGINX
-        echo "Installing NGINX..."
-        sudo apt install -y nginx
+Next steps:
+  1. Start the app locally with: npm run dev
+  2. Open the printed local URL in your browser
+  3. Create or unlock your master-locked workspace
 
-        # Copy NGINX configuration
-        echo "Configuring NGINX..."
-        sudo cp nginx/os /etc/nginx/sites-available/os
-        sudo ln -sf /etc/nginx/sites-available/os /etc/nginx/sites-enabled/
-        sudo nginx -t
-        sudo systemctl reload nginx
+Notes:
+  - wasm-pack is optional. If unavailable, the Vite build still completes.
+  - This installer sets up a local development/build environment only.
+EOF
+}
 
-        # Install Python and Flask dependencies for enrollment service
-        echo "Installing Python and Flask..."
-        sudo apt install -y python3 python3-pip python3-venv
-        python3 -m venv venv
-        source venv/bin/activate
-        pip install flask pyopenssl
-
-        # Start enrollment service (assuming it's in security/)
-        echo "Starting enrollment service..."
-        cd security
-        python3 enrol_server.py &
-        cd ..
-        ;;
-    Darwin)
-        # Deploy to web directory
-        echo "Deploying to /usr/local/var/www/os..."
-        sudo mkdir -p /usr/local/var/www/os
-        sudo cp -r dist/* /usr/local/var/www/os/
-        sudo chown -R $(whoami) /usr/local/var/www/os
-
-        # Configure NGINX
-        echo "Configuring NGINX..."
-        sudo cp nginx/os_macos /usr/local/etc/nginx/sites-available/os
-        sudo ln -sf /usr/local/etc/nginx/sites-available/os /usr/local/etc/nginx/sites-enabled/
-        sudo nginx -t
-        sudo brew services start nginx
-
-        # Install Python and Flask
-        echo "Installing Python and Flask..."
-        brew install python
-        pip3 install flask pyopenssl
-
-        # Start enrollment service
-        echo "Starting enrollment service..."
-        cd security
-        python3 enrol_server.py &
-        cd ..
-        ;;
-esac
-
-echo "✅ LimeOS installation complete!"
-echo "NGINX is serving LimeOS at https://os.example.com"
-echo "Enrollment service running on port 8080"
+main "$@"

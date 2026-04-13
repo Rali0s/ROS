@@ -1,88 +1,80 @@
 @echo off
-REM LimeOS Auto-Install Rollout Script for Windows
-REM Detects Windows and installs dependencies for the LimeOS React application
+setlocal EnableExtensions EnableDelayedExpansion
 
-echo 🌿 LimeOS Auto-Install Rollout 🌿
-echo ================================
+set "APP_NAME=OSA Midnight Oil"
+set "REPO_ROOT=%~dp0"
 
-REM Detect OS (should be Windows)
-echo Detected OS: Windows %OS%
+echo.
+echo [ROS] Starting %APP_NAME% installer
+echo [ROS] Repository: %REPO_ROOT%
 
-REM Check if Chocolatey is installed
-choco --version >nul 2>&1
+where node >nul 2>nul
 if %errorlevel% neq 0 (
-    echo Chocolatey not found. Installing Chocolatey...
-    powershell -Command "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))"
-) else (
-    echo Chocolatey found.
+  where winget >nul 2>nul
+  if %errorlevel% equ 0 (
+    echo [ROS] Installing Node.js LTS with winget...
+    winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
+  ) else (
+    where choco >nul 2>nul
+    if %errorlevel% equ 0 (
+      echo [ROS] Installing Node.js LTS with Chocolatey...
+      choco install nodejs-lts -y
+    ) else (
+      echo [ROS][warn] Node.js was not found and neither winget nor Chocolatey is available.
+      echo [ROS][warn] Install Node.js 18+ manually from https://nodejs.org/ and rerun this script.
+      exit /b 1
+    )
+  )
 )
 
-REM Install Node.js using Chocolatey
-echo Installing Node.js...
-choco install nodejs -y
+where node >nul 2>nul
+if %errorlevel% neq 0 (
+  echo [ROS][warn] Node.js is still unavailable after install attempt. Open a new terminal and rerun.
+  exit /b 1
+)
 
-REM Refresh environment variables
-call refreshenv.cmd
-
-REM Verify Node.js and npm installation
-echo Verifying Node.js and npm...
+echo [ROS] Node version:
 node --version
+echo [ROS] npm version:
 npm --version
 
-REM Install project dependencies
-echo Installing project dependencies...
-npm install
+where rustup >nul 2>nul
+if %errorlevel% neq 0 (
+  echo [ROS] Installing Rust toolchain...
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe"
+  rustup-init.exe -y
+  del /f /q rustup-init.exe >nul 2>nul
+)
 
-REM Install Rust toolchain
-echo Installing Rust toolchain...
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs ^| sh -s -- -y
-echo WARNING: Be sure to add %USERPROFILE%\.cargo\bin to your PATH to be able to run the installed binaries
-echo You can do this by adding the following to your system PATH environment variable:
-echo %USERPROFILE%\.cargo\bin
+set "CARGO_BIN=%USERPROFILE%\.cargo\bin"
+if exist "%CARGO_BIN%\cargo.exe" (
+  set "PATH=%CARGO_BIN%;%PATH%"
+  echo [ROS] Installing wasm-pack (optional build helper)...
+  "%CARGO_BIN%\cargo.exe" install wasm-pack
+) else (
+  echo [ROS][warn] Cargo was not found after rustup install. Skipping wasm-pack.
+)
 
-REM Install wasm-pack for WebAssembly compilation
-echo Installing wasm-pack...
-%USERPROFILE%\.cargo\bin\cargo install wasm-pack
+cd /d "%REPO_ROOT%"
 
-REM Build the application
-echo Building LimeOS...
-npm run build
+echo [ROS] Installing project dependencies...
+call npm install
+if %errorlevel% neq 0 exit /b %errorlevel%
 
-REM Deploy to web directory
-echo Deploying to C:\nginx\html\os...
-if not exist "C:\nginx\html\os" mkdir "C:\nginx\html\os"
-xcopy /E /I /Y dist\* "C:\nginx\html\os"
+echo [ROS] Running production build...
+call npm run build
+if %errorlevel% neq 0 exit /b %errorlevel%
 
-REM Install NGINX for Windows
-echo Installing NGINX for Windows...
-powershell -Command "Invoke-WebRequest -Uri 'http://nginx.org/download/nginx-1.24.0.zip' -OutFile 'nginx.zip'"
-powershell -Command "Expand-Archive -Path 'nginx.zip' -DestinationPath 'C:\'"
-ren "C:\nginx-1.24.0" "C:\nginx"
-del nginx.zip
-
-REM Copy NGINX configuration (adapted for Windows)
-echo Configuring NGINX...
-copy nginx\os_windows "C:\nginx\conf\sites-enabled\os"
-echo include sites-enabled/*.conf; >> "C:\nginx\conf\nginx.conf"
-
-REM Install Python for enrollment service
-echo Installing Python...
-choco install python -y
-call refreshenv.cmd
-
-REM Install Flask
-pip install flask pyopenssl
-
-REM Start enrollment service
-echo Starting enrollment service...
-start /B python security\enrol_server.py
-
-REM Start NGINX
-echo Starting NGINX...
-start /B "C:\nginx\nginx.exe"
-
-echo ✅ LimeOS installation complete!
-echo NGINX is serving LimeOS at https://os.example.com
-echo Enrollment service running on port 8080
-
+echo.
+echo [ROS] Install complete.
+echo.
+echo Next steps:
+echo   1. Start the app locally with: npm run dev
+echo   2. Open the printed local URL in your browser
+echo   3. Create or unlock your master-locked workspace
+echo.
+echo Notes:
+echo   - wasm-pack is optional. If unavailable, the Vite build still completes.
+echo   - This installer sets up a local development/build environment only.
+echo.
 pause

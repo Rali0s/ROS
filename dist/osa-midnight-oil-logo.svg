@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">OSA Midnight Oil Logo</title>
+  <desc id="desc">An amber and violet oil can with moonlit oil and OSA monogram.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a1022" />
+      <stop offset="55%" stop-color="#171d3d" />
+      <stop offset="100%" stop-color="#2c1459" />
+    </linearGradient>
+    <linearGradient id="metal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f7c35d" />
+      <stop offset="55%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+    <linearGradient id="oil" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#61d8ff" />
+      <stop offset="45%" stop-color="#7c63ff" />
+      <stop offset="100%" stop-color="#ba68ff" />
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#b15cff" flood-opacity="0.35" />
+      <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#47b8ff" flood-opacity="0.2" />
+    </filter>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#bg)" />
+  <g filter="url(#glow)">
+    <path d="M176 52h24c7 0 12 5 12 12v18c0 7-5 12-12 12h-20v16c0 8-6 14-14 14h-6v50c0 18-14 32-32 32h-16c-18 0-32-14-32-32V96c0-18 14-32 32-32h30c18 0 32 14 32 32v-8c0-7 5-12 12-12h10V52Z" fill="none" stroke="url(#metal)" stroke-width="12" stroke-linejoin="round"/>
+    <path d="M96 148c10-7 22-10 35-10 13 0 25 3 35 10v26c0 13-11 24-24 24h-22c-13 0-24-11-24-24v-26Z" fill="url(#oil)" opacity="0.95"/>
+    <path d="M116 84h40c10 0 18 8 18 18v12H98v-12c0-10 8-18 18-18Z" fill="#0f1731" opacity="0.65"/>
+    <path d="M136 98c-14 0-26 11-26 25 0 18 17 30 26 40 9-10 26-22 26-40 0-14-12-25-26-25Z" fill="url(#oil)"/>
+    <circle cx="136" cy="123" r="10" fill="#0b1126"/>
+    <path d="M76 168c17-6 33-9 50-9 23 0 44 5 64 14" fill="none" stroke="#47b8ff" stroke-opacity="0.42" stroke-width="5" stroke-linecap="round"/>
+    <text x="129" y="226" text-anchor="middle" font-family="Segoe UI, Inter, sans-serif" font-size="24" letter-spacing="5" fill="#eef3ff" opacity="0.92">OSA</text>
+  </g>
+</svg>
