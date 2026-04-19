@@ -11,7 +11,7 @@ import {
 import { decryptWalletSecret } from '../utils/cryptoVault';
 import { createId, now, useWorkspaceData } from '../utils/workspaceStore';
 
-const NETWORKS = ['Bitcoin', 'Ethereum', 'Solana', 'Monero', 'Litecoin', 'Other'];
+const NETWORKS = ['Bitcoin', 'Ethereum', 'Solana', 'Monero', 'Litecoin', 'Nostr', 'Other'];
 const PAPER_WALLET_TOOLS = [
   {
     id: 'zec-paper-wallet',
@@ -46,6 +46,51 @@ const maskValue = (value) => {
   }
 
   return `${source.slice(0, 4)}••••${source.slice(-4)}`;
+};
+
+const parseWalletSecretNotes = (value = '') =>
+  String(value)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .reduce((map, line) => {
+      const match = line.match(/^([a-z0-9 _-]+):\s*(.+)$/i);
+      if (match) {
+        map[match[1].trim().toLowerCase()] = match[2].trim();
+      }
+      return map;
+    }, {});
+
+const buildWalletSecretFields = (wallet, revealedSecret) => {
+  if (!wallet || !revealedSecret) {
+    return [];
+  }
+
+  const noteMap = parseWalletSecretNotes(revealedSecret.secretNotes);
+  const npub =
+    wallet.addresses.find((entry) => entry.startsWith('npub1')) || noteMap.npub || noteMap.address;
+  const pubkey =
+    wallet.addresses.find((entry) => /^[0-9a-f]{64}$/i.test(entry)) || noteMap.pubkey || noteMap.public;
+
+  if (wallet.network !== 'Nostr' && !npub && !pubkey) {
+    return [
+      {
+        label: 'Secret material',
+        value: revealedSecret.secretMaterial,
+        tone: 'primary',
+      },
+    ];
+  }
+
+  return [
+    {
+      label: 'nsec',
+      value: revealedSecret.secretMaterial,
+      tone: 'primary',
+    },
+    ...(npub ? [{ label: 'npub', value: npub, tone: 'secondary' }] : []),
+    ...(pubkey ? [{ label: 'pubkey', value: pubkey, tone: 'secondary' }] : []),
+  ];
 };
 
 const WalletVaultApp = () => {
@@ -86,6 +131,10 @@ const WalletVaultApp = () => {
 
   const revealedSecret = selectedWallet ? revealedSecrets[selectedWallet.id] : null;
   const isLegacyWallet = Boolean(selectedWallet?.secret && !selectedWallet.secretMaterial);
+  const secretFields = useMemo(
+    () => buildWalletSecretFields(selectedWallet, revealedSecret),
+    [revealedSecret, selectedWallet],
+  );
   const maskedSecret = useMemo(
     () => 'Protected by the master-locked workspace. Reveal it inside this unlocked session when needed.',
     [],
@@ -305,7 +354,7 @@ const WalletVaultApp = () => {
 
   return (
     <div className="flex h-full min-h-0 bg-slate-950 text-slate-100">
-      <aside className="w-80 border-r border-cyan-500/15 bg-slate-900/85 p-5">
+      <aside className="min-h-0 w-80 overflow-y-auto border-r border-cyan-500/15 bg-slate-900/85 p-5">
         <div className="flex items-center gap-2 text-lg font-semibold text-white">
           <WalletCards size={18} className="text-cyan-300" />
           Wallet Vault
@@ -541,25 +590,54 @@ const WalletVaultApp = () => {
                     </div>
                     {revealedSecret ? (
                       <div className="mt-4 space-y-4">
-                        <pre
-                          onCopy={(event) => preventSensitiveClipboard(event, selectedWallet)}
-                          onCut={(event) => preventSensitiveClipboard(event, selectedWallet)}
-                          onContextMenu={(event) => preventSensitiveClipboard(event, selectedWallet, 'Context menu blocked by Privacy Mode.')}
-                          className={`overflow-x-auto whitespace-pre-wrap break-words rounded-2xl border border-cyan-500/15 bg-slate-950/80 p-4 text-sm text-cyan-100 ${
-                            privacyEnabled && data.settings.privacyDisableClipboard ? 'select-none' : ''
-                          }`}
-                        >
-                          {revealedSecret.secretMaterial}
-                        </pre>
+                        <div className="grid gap-3">
+                          {secretFields.map((field) => (
+                            <div
+                              key={`${selectedWallet.id}-${field.label}`}
+                              onCopy={(event) => preventSensitiveClipboard(event, selectedWallet)}
+                              onCut={(event) => preventSensitiveClipboard(event, selectedWallet)}
+                              onContextMenu={(event) =>
+                                preventSensitiveClipboard(
+                                  event,
+                                  selectedWallet,
+                                  'Context menu blocked by Privacy Mode.',
+                                )
+                              }
+                              className={`rounded-2xl border p-4 ${
+                                field.tone === 'primary'
+                                  ? 'border-cyan-500/15 bg-slate-950/80'
+                                  : 'border-white/10 bg-black/25'
+                              } ${
+                                privacyEnabled && data.settings.privacyDisableClipboard ? 'select-none' : ''
+                              }`}
+                            >
+                              <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                                {field.label}
+                              </div>
+                              <div
+                                className={`mt-3 whitespace-pre-wrap break-all text-[13px] leading-6 ${
+                                  field.tone === 'primary' ? 'text-cyan-100' : 'text-slate-200'
+                                }`}
+                              >
+                                {field.value}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                         <div
                           onCopy={(event) => preventSensitiveClipboard(event, selectedWallet)}
                           onCut={(event) => preventSensitiveClipboard(event, selectedWallet)}
                           onContextMenu={(event) => preventSensitiveClipboard(event, selectedWallet, 'Context menu blocked by Privacy Mode.')}
-                          className={`rounded-2xl border border-white/10 bg-black/25 p-4 text-sm leading-6 text-slate-300 ${
+                          className={`rounded-2xl border border-white/10 bg-black/25 p-4 ${
                             privacyEnabled && data.settings.privacyDisableClipboard ? 'select-none' : ''
                           }`}
                         >
-                          {revealedSecret.secretNotes || 'No secret notes stored.'}
+                          <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                            Secret notes
+                          </div>
+                          <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-300">
+                            {revealedSecret.secretNotes || 'No secret notes stored.'}
+                          </div>
                         </div>
                       </div>
                     ) : (

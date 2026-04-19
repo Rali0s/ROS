@@ -60,6 +60,8 @@ install_rust() {
   if has_cmd cargo; then
     info "Installing wasm-pack (optional build helper)..."
     cargo install wasm-pack || warn "wasm-pack install skipped. The web build still works without it."
+    info "Installing Tauri CLI for desktop mode..."
+    cargo install tauri-cli || warn "tauri-cli install skipped. Web mode still works."
   else
     warn "Cargo was not found after rustup install. Skipping wasm-pack."
   fi

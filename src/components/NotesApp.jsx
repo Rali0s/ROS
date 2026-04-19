@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import { useEffect, useMemo, useState } from 'react';
 import {
   Eye,
@@ -8,6 +9,7 @@ import {
   StickyNote,
   Trash2,
 } from 'lucide-react';
+import { getAppInteriorTheme } from '../utils/constants';
 import { createId, now, useWorkspaceData } from '../utils/workspaceStore';
 
 const NOTE_TEMPLATES = {
@@ -46,21 +48,57 @@ const NOTE_TEMPLATES = {
     tags: ['inventory', 'reference'],
     body: '# Inventory note\n\n- Asset:\n- Platform:\n- Owner:\n- Caveats:',
   },
+  biomedical: {
+    label: 'BioMedical',
+    title: 'BioMedical note',
+    category: 'biomedical',
+    tags: ['biomedical', 'reference'],
+    body:
+      '# Compound name\n\n## Clinical name / aliases\n\n- Dosage trial:\n- Mechanism:\n- Warnings:\n- Interactions:\n\n----\n\n### Notes\n> Capture source quality, contraindications, and what still needs verification.',
+  },
 };
 
-const formatUpdated = (value) =>
-  new Intl.DateTimeFormat([], {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+const formatUpdatedDate = (value) =>
+  new Intl.DateTimeFormat('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: '2-digit',
+    timeZone: 'UTC',
   }).format(new Date(value));
 
-const renderMarkdown = (text) => {
+const formatUpdatedTimeUtc = (value) =>
+  new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'UTC',
+  }).format(new Date(value));
+
+const renderInlineMarkdown = (text) => {
+  const source = String(text || '');
+  const segments = source.split(/(\*\*[^*]+\*\*)/g);
+
+  return segments
+    .filter(Boolean)
+    .map((segment, index) => {
+      if (segment.startsWith('**') && segment.endsWith('**') && segment.length > 4) {
+        return (
+          <strong key={`bold-${index}`} className="font-semibold text-white">
+            {segment.slice(2, -2)}
+          </strong>
+        );
+      }
+
+      return <span key={`text-${index}`}>{segment}</span>;
+    });
+};
+
+const renderMarkdown = (text, theme) => {
   const lines = text.split('\n');
   const blocks = [];
   let paragraph = [];
   let list = [];
+  let quote = [];
   let codeFence = [];
   let inCodeFence = false;
 
@@ -84,6 +122,16 @@ const renderMarkdown = (text) => {
     }
   };
 
+  const flushQuote = () => {
+    if (quote.length) {
+      blocks.push({
+        type: 'quote',
+        content: quote.join(' '),
+      });
+      quote = [];
+    }
+  };
+
   const flushCodeFence = () => {
     if (codeFence.length) {
       blocks.push({
@@ -98,6 +146,7 @@ const renderMarkdown = (text) => {
     if (line.trim().startsWith('```')) {
       flushParagraph();
       flushList();
+      flushQuote();
 
       if (inCodeFence) {
         flushCodeFence();
@@ -115,12 +164,14 @@ const renderMarkdown = (text) => {
     if (!line.trim()) {
       flushParagraph();
       flushList();
+      flushQuote();
       return;
     }
 
     if (line.startsWith('# ')) {
       flushParagraph();
       flushList();
+      flushQuote();
       blocks.push({
         type: 'heading',
         level: 1,
@@ -132,6 +183,7 @@ const renderMarkdown = (text) => {
     if (line.startsWith('## ')) {
       flushParagraph();
       flushList();
+      flushQuote();
       blocks.push({
         type: 'heading',
         level: 2,
@@ -140,9 +192,54 @@ const renderMarkdown = (text) => {
       return;
     }
 
-    if (line.startsWith('- ') || line.startsWith('* ')) {
+    if (line.startsWith('### ')) {
       flushParagraph();
-      list.push(line.slice(2));
+      flushList();
+      flushQuote();
+      blocks.push({
+        type: 'heading',
+        level: 3,
+        content: line.slice(4),
+      });
+      return;
+    }
+
+    if (/^-{4,}\s*$/.test(line.trim())) {
+      flushParagraph();
+      flushList();
+      flushQuote();
+      blocks.push({
+        type: 'divider',
+      });
+      return;
+    }
+
+    if (line.trim().startsWith('>')) {
+      flushParagraph();
+      flushList();
+      quote.push(line.trim().replace(/^>\s?/, ''));
+      return;
+    }
+
+    const sublistMatch = line.match(/^\s*-\s+-\s+(.*)$/);
+    if (sublistMatch) {
+      flushParagraph();
+      flushQuote();
+      list.push({
+        content: sublistMatch[1],
+        level: 1,
+      });
+      return;
+    }
+
+    const listMatch = line.match(/^(\s*)[-*]\s+(.*)$/);
+    if (listMatch) {
+      flushParagraph();
+      flushQuote();
+      list.push({
+        content: listMatch[2],
+        level: Math.min(3, Math.floor(listMatch[1].length / 2)),
+      });
       return;
     }
 
@@ -151,15 +248,20 @@ const renderMarkdown = (text) => {
 
   flushParagraph();
   flushList();
+  flushQuote();
   flushCodeFence();
 
   return blocks.map((block, index) => {
     if (block.type === 'heading') {
       const className =
-        block.level === 1 ? 'text-2xl font-semibold text-white' : 'text-xl font-semibold text-amber-200';
+        block.level === 1
+          ? 'text-2xl font-semibold text-white'
+          : block.level === 2
+            ? `text-xl font-semibold ${theme.headingAccent}`
+            : `text-lg font-semibold ${theme.headingAccent}`;
       return (
         <h2 key={`${block.type}-${index}`} className={className}>
-          {block.content}
+          {renderInlineMarkdown(block.content)}
         </h2>
       );
     }
@@ -168,20 +270,43 @@ const renderMarkdown = (text) => {
       return (
         <ul key={`${block.type}-${index}`} className="space-y-2 text-sm leading-6 text-slate-200">
           {block.items.map((item, itemIndex) => (
-            <li key={`${block.type}-${index}-${itemIndex}`} className="flex gap-3">
-              <span className="mt-2 h-1.5 w-1.5 rounded-full bg-amber-300" />
-              <span>{item}</span>
+            <li
+              key={`${block.type}-${index}-${itemIndex}`}
+              className="flex gap-3"
+              style={{ marginLeft: `${item.level * 18}px` }}
+            >
+              <span
+                className={`mt-2 h-1.5 w-1.5 flex-none rounded-full ${theme.bulletAccent} ${
+                  item.level > 0 ? 'opacity-70' : ''
+                }`}
+              />
+              <span>{renderInlineMarkdown(item.content)}</span>
             </li>
           ))}
         </ul>
       );
     }
 
+    if (block.type === 'quote') {
+      return (
+        <blockquote
+          key={`${block.type}-${index}`}
+          className={`rounded-r-2xl border-l-4 ${theme.heroBorder} bg-black/20 px-4 py-3 text-sm leading-7 text-slate-300`}
+        >
+          {renderInlineMarkdown(block.content)}
+        </blockquote>
+      );
+    }
+
+    if (block.type === 'divider') {
+      return <hr key={`${block.type}-${index}`} className={`border-0 border-t ${theme.panelBorder}`} />;
+    }
+
     if (block.type === 'code') {
       return (
         <pre
           key={`${block.type}-${index}`}
-          className="overflow-x-auto rounded-xl border border-white/10 bg-black/40 p-4 text-xs text-cyan-200"
+          className={`overflow-x-auto rounded-xl border border-white/10 bg-black/40 p-4 text-xs ${theme.codeAccent}`}
         >
           {block.content}
         </pre>
@@ -190,11 +315,38 @@ const renderMarkdown = (text) => {
 
     return (
       <p key={`${block.type}-${index}`} className="text-sm leading-7 text-slate-300">
-        {block.content}
+        {renderInlineMarkdown(block.content)}
       </p>
     );
   });
 };
+
+const NotePreviewHeader = ({ note, theme }) => (
+  <div className={`mb-5 flex flex-wrap items-start justify-between gap-3 border-b ${theme.panelBorder} pb-4`}>
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="text-2xl font-semibold tracking-tight text-white">{note.title}</h1>
+        <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300">
+          {note.category}
+        </span>
+      </div>
+      {note.tags.length ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {note.tags.map((tag) => (
+            <span key={`${note.id}-preview-${tag}`} className={`rounded-full border px-2 py-0.5 text-[10px] ${theme.tag}`}>
+              #{tag}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+
+    <div className="text-right">
+      <div className="text-[11px] font-medium tracking-[0.12em] text-slate-400">{formatUpdatedDate(note.updatedAt)}</div>
+      <div className="mt-1 text-[10px] uppercase tracking-[0.2em] text-slate-500">{formatUpdatedTimeUtc(note.updatedAt)} UTC</div>
+    </div>
+  </div>
+);
 
 const sortNotes = (notes) =>
   [...notes].sort((left, right) => {
@@ -211,6 +363,7 @@ const NotesApp = () => {
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState('edit');
   const [activeTag, setActiveTag] = useState('all');
+  const theme = getAppInteriorTheme(data.settings.theme);
 
   useEffect(() => {
     if (!data.notes.find((note) => note.id === selectedNoteId)) {
@@ -320,11 +473,11 @@ const NotesApp = () => {
   };
 
   return (
-    <div className="flex h-full bg-slate-950 text-slate-100">
-      <aside className="flex w-80 flex-col border-r border-white/10 bg-slate-900/90">
-        <div className="border-b border-white/10 p-4">
+    <div className={`flex h-full ${theme.pageBg} text-slate-100`}>
+      <aside className={`flex w-80 flex-col border-r ${theme.sidebarBorder} ${theme.sidebarBg}`}>
+        <div className={`border-b ${theme.sidebarBorder} p-4`}>
           <div className="flex items-center gap-2 text-lg font-semibold text-white">
-            <StickyNote size={18} className="text-amber-300" />
+            <StickyNote size={18} className={theme.accentText} />
             Vault Notes
           </div>
           <p className="mt-1 text-sm text-slate-400">Markdown capture, quick templates, and pinned briefs.</p>
@@ -332,7 +485,7 @@ const NotesApp = () => {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search notes..."
-            className="mt-4 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-slate-100 outline-none transition focus:border-amber-400/40"
+            className={`mt-4 w-full rounded-xl border px-3 py-2 text-sm outline-none transition ${theme.input}`}
           />
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -343,8 +496,8 @@ const NotesApp = () => {
                 onClick={() => createNote(key)}
                 className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
                   key === 'briefing'
-                    ? 'border border-amber-500/20 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20'
-                    : 'border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10'
+                    ? `border ${theme.primaryButtonSoft}`
+                    : `border border-white/10 ${theme.secondaryButton}`
                 }`}
               >
                 {template.label}
@@ -357,9 +510,7 @@ const NotesApp = () => {
               type="button"
               onClick={() => setActiveTag('all')}
               className={`rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] transition ${
-                activeTag === 'all'
-                  ? 'bg-amber-500 text-black'
-                  : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                activeTag === 'all' ? theme.activeChip : theme.inactiveChip
               }`}
             >
               All
@@ -370,9 +521,7 @@ const NotesApp = () => {
                 type="button"
                 onClick={() => setActiveTag(tag)}
                 className={`rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] transition ${
-                  activeTag === tag
-                    ? 'bg-amber-500 text-black'
-                    : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                  activeTag === tag ? theme.activeChip : theme.inactiveChip
                 }`}
               >
                 {tag}
@@ -389,28 +538,31 @@ const NotesApp = () => {
                 type="button"
                 onClick={() => setSelectedNoteId(note.id)}
                 className={`w-full rounded-2xl border p-3 text-left transition ${
-                  selectedNote?.id === note.id
-                    ? 'border-amber-400/30 bg-amber-500/10'
-                    : 'border-white/5 bg-black/15 hover:border-white/10 hover:bg-white/5'
+                  selectedNote?.id === note.id ? theme.selectedCard : theme.card
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
                       <div className="font-medium text-white">{note.title}</div>
-                      {note.pinned ? <Pin size={12} className="text-amber-300" /> : null}
-                    </div>
-                    <div className="mt-1 text-[11px] uppercase tracking-[0.22em] text-slate-500">
-                      {note.category}
+                        <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300">
+                          {note.category}
+                        </span>
+                        {note.pinned ? <Pin size={12} className={theme.accentText} /> : null}
+                      </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] text-slate-500">{formatUpdatedDate(note.updatedAt)}</div>
+                    <div className="mt-1 text-[9px] uppercase tracking-[0.16em] text-slate-600">
+                      {formatUpdatedTimeUtc(note.updatedAt)} UTC
                     </div>
                   </div>
-                  <span className="text-[11px] text-slate-500">{formatUpdated(note.updatedAt)}</span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {note.tags.map((tag) => (
                     <span
                       key={`${note.id}-${tag}`}
-                      className="rounded-full border border-white/5 bg-white/5 px-2 py-1 text-[11px] text-slate-300"
+                      className={`rounded-full border px-2 py-1 text-[11px] ${theme.tag}`}
                     >
                       #{tag}
                     </span>
@@ -419,7 +571,7 @@ const NotesApp = () => {
               </button>
             ))
           ) : (
-            <div className="rounded-2xl border border-dashed border-white/10 bg-black/10 p-4 text-sm text-slate-500">
+            <div className={`rounded-2xl border border-dashed ${theme.sidebarBorder} bg-black/10 p-4 text-sm text-slate-500`}>
               No notes match this filter.
             </div>
           )}
@@ -429,13 +581,16 @@ const NotesApp = () => {
       <section className="flex min-w-0 flex-1 flex-col">
         {selectedNote ? (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
+            <div className={`flex flex-wrap items-center justify-between gap-3 border-b ${theme.sidebarBorder} px-5 py-4`}>
               <div className="min-w-0">
                 <div className="text-xs uppercase tracking-[0.24em] text-slate-500">Selected note</div>
                 <div className="flex items-center gap-2">
                   <div className="truncate text-lg font-semibold text-white">{selectedNote.title}</div>
+                  <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300">
+                    {selectedNote.category}
+                  </span>
                   {selectedNote.pinned ? (
-                    <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">
+                    <span className={`rounded-full border px-2 py-1 text-[11px] ${theme.tag}`}>
                       pinned
                     </span>
                   ) : null}
@@ -447,7 +602,7 @@ const NotesApp = () => {
                   type="button"
                   onClick={() => setMode('edit')}
                   className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
-                    mode === 'edit' ? 'bg-amber-500 text-black' : 'bg-white/5 text-slate-200 hover:bg-white/10'
+                    mode === 'edit' ? theme.activeChip : theme.secondaryButton
                   }`}
                 >
                   <LayoutList size={16} />
@@ -457,7 +612,7 @@ const NotesApp = () => {
                   type="button"
                   onClick={() => setMode('preview')}
                   className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${
-                    mode === 'preview' ? 'bg-amber-500 text-black' : 'bg-white/5 text-slate-200 hover:bg-white/10'
+                    mode === 'preview' ? theme.activeChip : theme.secondaryButton
                   }`}
                 >
                   <Eye size={16} />
@@ -466,7 +621,7 @@ const NotesApp = () => {
                 <button
                   type="button"
                   onClick={() => updateNote({ pinned: !selectedNote.pinned })}
-                  className="inline-flex items-center gap-2 rounded-xl bg-white/5 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10"
+                  className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${theme.secondaryButton}`}
                 >
                   {selectedNote.pinned ? <PinOff size={16} /> : <Pin size={16} />}
                   {selectedNote.pinned ? 'Unpin' : 'Pin'}
@@ -474,7 +629,7 @@ const NotesApp = () => {
                 <button
                   type="button"
                   onClick={() => createNote('blank')}
-                  className="inline-flex items-center gap-2 rounded-xl bg-white/5 px-3 py-2 text-sm text-slate-200 transition hover:bg-white/10"
+                  className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition ${theme.secondaryButton}`}
                 >
                   <FilePlus2 size={16} />
                   New
@@ -492,14 +647,14 @@ const NotesApp = () => {
 
             {mode === 'edit' ? (
               <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[1.1fr_0.9fr]">
-                <div className="flex min-h-0 flex-col border-r border-white/10">
-                  <div className="grid gap-4 border-b border-white/10 p-5 md:grid-cols-2">
+                <div className={`flex min-h-0 flex-col border-r ${theme.sidebarBorder}`}>
+                  <div className={`grid gap-4 border-b ${theme.sidebarBorder} p-5 md:grid-cols-2`}>
                     <label className="space-y-2 text-sm text-slate-300">
                       <span className="block text-xs uppercase tracking-[0.22em] text-slate-500">Title</span>
                       <input
                         value={selectedNote.title}
                         onChange={(event) => updateNote({ title: event.target.value })}
-                        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none transition focus:border-amber-400/40"
+                        className={`w-full rounded-xl border px-3 py-2 outline-none transition ${theme.input}`}
                       />
                     </label>
 
@@ -508,7 +663,7 @@ const NotesApp = () => {
                       <input
                         value={selectedNote.category}
                         onChange={(event) => updateNote({ category: event.target.value })}
-                        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none transition focus:border-amber-400/40"
+                        className={`w-full rounded-xl border px-3 py-2 outline-none transition ${theme.input}`}
                       />
                     </label>
 
@@ -524,7 +679,7 @@ const NotesApp = () => {
                               .filter(Boolean),
                           })
                         }
-                        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none transition focus:border-amber-400/40"
+                        className={`w-full rounded-xl border px-3 py-2 outline-none transition ${theme.input}`}
                       />
                     </label>
                   </div>
@@ -533,22 +688,24 @@ const NotesApp = () => {
                     <textarea
                       value={selectedNote.body}
                       onChange={(event) => updateNote({ body: event.target.value })}
-                      className="h-full min-h-[320px] w-full resize-none rounded-2xl border border-white/10 bg-black/35 p-4 font-mono text-sm leading-6 text-slate-100 outline-none transition focus:border-amber-400/40"
+                      className={`h-full min-h-[320px] w-full resize-none rounded-2xl border bg-black/35 p-4 font-mono text-sm leading-6 outline-none transition ${theme.input}`}
                     />
                   </div>
                 </div>
 
                 <div className="min-h-0 overflow-y-auto p-5">
                   <div className="text-xs uppercase tracking-[0.24em] text-slate-500">Live preview</div>
-                  <div className="mt-4 space-y-4 rounded-2xl border border-white/10 bg-black/25 p-5">
-                    {renderMarkdown(selectedNote.body)}
+                  <div className={`mt-4 space-y-4 rounded-2xl border ${theme.panelBorder} ${theme.previewBg} p-5`}>
+                    <NotePreviewHeader note={selectedNote} theme={theme} />
+                    {renderMarkdown(selectedNote.body, theme)}
                   </div>
                 </div>
               </div>
             ) : (
               <div className="min-h-0 flex-1 overflow-y-auto p-5">
-                <div className="mx-auto max-w-3xl space-y-4 rounded-3xl border border-white/10 bg-slate-900/70 p-8">
-                  {renderMarkdown(selectedNote.body)}
+                <div className={`mx-auto max-w-3xl space-y-4 rounded-3xl border ${theme.panelBorder} ${theme.panelBg} p-8`}>
+                  <NotePreviewHeader note={selectedNote} theme={theme} />
+                  {renderMarkdown(selectedNote.body, theme)}
                 </div>
               </div>
             )}

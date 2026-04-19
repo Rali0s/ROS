@@ -1,26 +1,81 @@
 # OSA Midnight Oil
 
-OSA Midnight Oil is a local-first, encrypted operations workspace built for disciplined note-taking, planning, reference management, and personal command-center workflows. The project packages a desktop-style interface inside a web app and keeps the core experience focused on privacy, offline use, and operator-controlled organization rather than cloud sync or AI-driven automation.
+OSA Midnight Oil is a local-first desktop workspace built around a master-locked encrypted vault. It combines planning, note-taking, reference capture, identity organization, wallet storage, research tooling, and a cinematic ROS-style shell into one self-contained environment.
 
-The system is designed to feel like a self-contained console environment. It combines structured tools such as notes, bookmarks, inventory tracking, calendars, world clocks, profile organization, and flow mapping into a single shell. Workspace data is protected behind a master-lock model so the persisted workspace stays encrypted at rest and only decrypts into memory during an unlocked session.
+The project is designed to feel like a personal operations desk rather than a cloud app. Workspace data stays local, can be locked behind a passphrase, and is intended to remain useful offline.
 
-## About
+## What It Includes
 
-OSA Midnight Oil is meant to serve as a personal vault and planning desk. Instead of scattering context across multiple browser tabs, text editors, and ad hoc notes, the app brings that work into one environment with a consistent visual shell and a shared encrypted workspace model.
+- `Overview`: high-level workspace status, counts, trust summary, and quick capture
+- `Vault Notes`: markdown-first notes with structured templates and preview
+- `Library`: local document catalog and reader workflow
+- `Research Vault`: structured research intelligence records and study comparison
+- `Profile Organizer`: identities, VoIP lines, phone book, PGP bundles, and operator records
+- `ROS Comms`: local/native secure messaging workflow
+- `Nostr Lounge`: lightweight read-first social sidecar
+- `F*Society`: native-only LAN room for discovery, chat, handoff notes, and direct file sends
+- `Flow Studio`: wireframe flow and system mapping
+- `Wallet Vault`: wallet records and sensitive material inside the locked workspace
+- `Control Room`: backup, recovery, trust posture, export/import, and destructive controls
+- `Midnight Console`: local read-only console into the workspace state
 
-The project currently includes:
+## Security Model
 
-- `Overview`: a high-level dashboard showing current workspace activity and counts.
-- `Calendar`: a practical month-view planner for scheduling events, deadlines, and checkpoints.
-- `Vault Notes`: markdown-first notes with live capture and quick planning structure.
-- `Profile Organizer`: encrypted identity and account organization for names, emails, social logins, PGP notes, VPN zones, and related records.
-- `Flow Studio`: wireframe diagramming for system flows, workflows, and network-style maps.
-- `Bookmarks`: saved references, docs, links, and recurring tools.
-- `Inventory`: software, operating system, methodology, and asset tracking.
-- `Wallet Vault`: storage for wallet labels, addresses, and sensitive recovery material inside the master-locked workspace.
-- `World Clocks`: multiple time zones in one place.
-- `Midnight Console`: a local command console for quick read access into the workspace.
-- `Control Room`: workspace controls for import/export, reset, wallpaper changes, and lock-state management.
+- Workspace data is intended to be encrypted at rest.
+- Decrypted workspace state only lives in memory during an unlocked session.
+- The shell supports manual lock, idle auto-lock, backup export/import, and nuke/reset flows.
+- Native desktop builds move more trust boundaries into Rust/Tauri instead of browser-managed storage.
+- Local-first behavior is the default. Cloud sync is not required for core use.
+
+## Runtime Modes
+
+### Web / Beta Compatibility
+
+The Vite app can run in the browser for rapid UI development and beta compatibility.
+
+```bash
+npm install
+npm run dev
+```
+
+### Native Desktop
+
+The primary desktop path lives under [src-tauri](/Users/premise/Documents/github/ROS/src-tauri) and uses Tauri 2.
+
+```bash
+npm run desktop:dev
+```
+
+To build desktop artifacts:
+
+```bash
+npm run desktop:build
+```
+
+If `cargo tauri` is not installed yet:
+
+```bash
+cargo install tauri-cli
+```
+
+## Standard Scripts
+
+```bash
+npm run dev
+npm run build
+npm run lint
+npm run preview
+```
+
+Additional project utilities:
+
+- `npm run release:checksums`
+- `npm run site:beta:serve`
+
+## Build Notes
+
+- `npm run build` attempts the optional WASM step first. If the `wasm32-unknown-unknown` target or `wasm-pack` is not available, that step is skipped and the Vite build still completes.
+- Tauri/Rust build artifacts can consume several gigabytes. If local disk is tight, clearing `src-tauri/target` and `rust-core/target` is the fastest safe cleanup.
 
 ## Screenshots
 
@@ -32,73 +87,24 @@ The project currently includes:
 
 ![OSA Midnight Oil dashboard with overview, search, moon phase, and spiritual clock widgets](HD/OSA-Dashboard.png)
 
-## ROS Terminal
+## Upstream Hygiene
 
-ROS Terminal in this project is the desktop shell and console experience, not a remote-access tool and not an offensive security utility. It is best understood as the operating frame around the workspace.
+For GitHub upstream, generated artifacts and local machine clutter should stay untracked:
 
-Inside the app, the terminal surface appears as `Midnight Console`. It behaves like a local command pane that reads from the current unlocked workspace and returns lightweight text responses. It does not call external AI services, does not open network sessions, and does not execute arbitrary system commands from the desktop shell. Its purpose is fast retrieval and navigation, not shell escalation.
+- `dist/`
+- `src-tauri/target/`
+- `rust-core/target/`
+- `.DS_Store`
+- local `.env*` files
 
-The current console supports commands such as:
+The repository should primarily contain source, assets that are intentionally part of the product, release metadata, and documentation.
 
-- `help`
-- `whoami`
-- `date`
-- `stats`
-- `notes`
-- `recent`
-- `calendar`
-- `bookmarks`
-- `inventory`
-- `profiles`
-- `flows`
-- `wallets`
-- `clocks`
-- `apps`
-- `find <text>`
+## Project Direction
 
-That makes ROS Terminal useful for quickly checking what is already in the workspace without opening every app window by hand. For example, you can list recent notes, inspect saved calendar events, summarize inventory, or search across the unlocked workspace from one place.
+OSA Midnight Oil is evolving toward a native local-first desktop workspace with:
 
-## Security Model
-
-- The workspace uses a master passphrase and encrypted persistence.
-- Data is encrypted at rest and only decrypted into memory for the active session.
-- The shell supports manual lock and idle auto-lock.
-- Snapshot export/import is supported for workspace portability.
-- The project is intentionally local-first and does not depend on cloud sync.
-
-## Branding
-
-The project theme centers on `OSA Midnight Oil`, combining a dark console shell, a cinematic boot splash, and an oil-can brand mark used for the app logo and favicon. The visual language is meant to suggest a late-night command desk: deliberate, high-contrast, and atmospheric rather than minimal or office-generic.
-
-## Development
-
-Install dependencies and start the app:
-
-```bash
-npm install
-npm run dev
-```
-
-Build for production:
-
-```bash
-npm run build
-```
-
-Lint the codebase:
-
-```bash
-npm run lint
-```
-
-Easy install helpers are also included:
-
-- `./install.sh` for macOS and Linux
-- `install.bat` for Windows
-
-These scripts install Node.js when needed, attempt to install the optional Rust/`wasm-pack` toolchain, install project dependencies, and run a production build so the workspace is ready for local use.
-
-## Notes
-
-- The optional Rust/WASM build step is attempted during production builds. If `wasm-pack` is not installed, that step is skipped and the web build still completes.
-- This repository currently focuses on a self-contained desktop-like experience in the browser, with the shell, branding, and encrypted workspace all living in the same app.
+- stronger Rust-owned trust boundaries
+- beta release packaging for macOS, Windows, and Linux
+- support/recovery tooling
+- structured research and operator workflows
+- optional sidecar features like Nostr Lounge and F*Society without turning the core product into a cloud-first platform

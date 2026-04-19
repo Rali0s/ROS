@@ -120,10 +120,130 @@ const decryptString = async (payload, passphrase, purpose) => {
   }
 };
 
+const encryptBytes = async (bytes, passphrase, purpose) => {
+  if (!passphrase.trim()) {
+    throw new Error('A passphrase is required.');
+  }
+
+  ensureWebCrypto();
+
+  const salt = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(passphrase, salt, purpose, ['encrypt']);
+  const ciphertextBuffer = await globalThis.crypto.subtle.encrypt(
+    {
+      name: 'AES-GCM',
+      iv,
+    },
+    key,
+    bytes,
+  );
+
+  return {
+    version: ENCRYPTION_VERSION,
+    algorithm: 'AES-256-GCM',
+    kdf: 'PBKDF2-SHA256',
+    iterations: PBKDF2_ITERATIONS,
+    salt: bytesToBase64(salt),
+    iv: bytesToBase64(iv),
+    ciphertext: bytesToBase64(new Uint8Array(ciphertextBuffer)),
+  };
+};
+
+const decryptBytes = async (payload, passphrase, purpose) => {
+  if (!payload?.salt || !payload?.iv || !payload?.ciphertext) {
+    throw new Error('Encrypted payload is incomplete.');
+  }
+
+  ensureWebCrypto();
+
+  const salt = base64ToBytes(payload.salt);
+  const iv = base64ToBytes(payload.iv);
+  const ciphertext = base64ToBytes(payload.ciphertext);
+  const key = await deriveKey(passphrase, salt, purpose, ['decrypt']);
+
+  try {
+    const plaintextBuffer = await globalThis.crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv,
+      },
+      key,
+      ciphertext,
+    );
+
+    return new Uint8Array(plaintextBuffer);
+  } catch (error) {
+    throw new Error('Unable to decrypt with this passphrase.');
+  }
+};
+
+const importRawAesKey = (keyBytes, usages) =>
+  globalThis.crypto.subtle.importKey(
+    'raw',
+    keyBytes,
+    {
+      name: 'AES-GCM',
+      length: 256,
+    },
+    false,
+    usages,
+  );
+
+const encryptBytesWithKeyBytes = async (bytes, keyBytes) => {
+  ensureWebCrypto();
+
+  const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
+  const key = await importRawAesKey(keyBytes, ['encrypt']);
+  const ciphertextBuffer = await globalThis.crypto.subtle.encrypt(
+    {
+      name: 'AES-GCM',
+      iv,
+    },
+    key,
+    bytes,
+  );
+
+  return {
+    version: ENCRYPTION_VERSION,
+    algorithm: 'AES-256-GCM',
+    iv: bytesToBase64(iv),
+    ciphertext: bytesToBase64(new Uint8Array(ciphertextBuffer)),
+  };
+};
+
+const decryptBytesWithKeyBytes = async (payload, keyBytes) => {
+  if (!payload?.iv || !payload?.ciphertext) {
+    throw new Error('Encrypted payload is incomplete.');
+  }
+
+  ensureWebCrypto();
+
+  const iv = base64ToBytes(payload.iv);
+  const ciphertext = base64ToBytes(payload.ciphertext);
+  const key = await importRawAesKey(keyBytes, ['decrypt']);
+
+  try {
+    const plaintextBuffer = await globalThis.crypto.subtle.decrypt(
+      {
+        name: 'AES-GCM',
+        iv,
+      },
+      key,
+      ciphertext,
+    );
+
+    return new Uint8Array(plaintextBuffer);
+  } catch (error) {
+    throw new Error('Unable to decrypt with the unwrapped file key.');
+  }
+};
+
 const normalizeBootMetadata = (boot) => ({
   codename: boot?.codename || PRODUCT_NAME,
   operator: boot?.operator || 'Guest Operator',
-  wallpaper: boot?.wallpaper || 'violet-surge',
+  theme: boot?.theme || 'midnight_oil',
+  wallpaper: boot?.wallpaper || 'midnight-oil-state-one',
 });
 
 export const encryptJson = async (payload, passphrase, purpose) =>
@@ -132,11 +252,43 @@ export const encryptJson = async (payload, passphrase, purpose) =>
 export const decryptJson = async (payload, passphrase, purpose) =>
   JSON.parse(await decryptString(payload, passphrase, purpose));
 
+export const encryptBinaryPayload = async (bytes, passphrase, purpose) =>
+  encryptBytes(bytes, passphrase, purpose);
+
+export const decryptBinaryPayload = async (payload, passphrase, purpose) =>
+  decryptBytes(payload, passphrase, purpose);
+
 export const encryptWalletSecret = async (secretMaterial, passphrase) =>
   encryptString(secretMaterial, passphrase, 'wallet-vault');
 
 export const decryptWalletSecret = async (payload, passphrase) =>
   decryptString(payload, passphrase, 'wallet-vault');
+
+export const createWrappedBinaryPayload = async (bytes, passphrase, purpose) => {
+  ensureWebCrypto();
+
+  const fileKey = globalThis.crypto.getRandomValues(new Uint8Array(32));
+  const payload = await encryptBytesWithKeyBytes(bytes, fileKey);
+  const wrappedKey = await encryptString(bytesToBase64(fileKey), passphrase, `${purpose}::wrap`);
+
+  return {
+    version: ENCRYPTION_VERSION,
+    algorithm: 'AES-256-GCM',
+    keyManagement: 'wrapped-file-key',
+    wrappedKey,
+    payload,
+  };
+};
+
+export const decryptWrappedBinaryPayload = async (container, passphrase, purpose) => {
+  if (!container?.wrappedKey || !container?.payload) {
+    throw new Error('Wrapped file payload is incomplete.');
+  }
+
+  const keyBase64 = await decryptString(container.wrappedKey, passphrase, `${purpose}::wrap`);
+  const keyBytes = base64ToBytes(keyBase64);
+  return decryptBytesWithKeyBytes(container.payload, keyBytes);
+};
 
 export const createEncryptedWorkspaceContainer = async (workspace, passphrase, boot) => ({
   kind: WORKSPACE_KIND,

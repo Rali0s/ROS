@@ -7,12 +7,19 @@
     "dev": "vite",
     "build": "npm run build:wasm || echo 'WASM build skipped' && vite build",
     "build:wasm": "cd rust-core && wasm-pack build --target web --out-dir pkg",
+    "desktop:dev": "cd src-tauri && cargo tauri dev",
+    "desktop:build": "cd src-tauri && cargo tauri build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "release:checksums": "node scripts/generate-release-checksums.mjs",
+    "site:beta:serve": "python3 -m http.server 4178 --directory beta-site"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.10.1",
     "env": "^0.0.2",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.263.1",
+    "nostr-tools": "^2.7.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

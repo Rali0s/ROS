@@ -10,6 +10,22 @@
   --midnight-accent-strong: #f97316;
   --midnight-text: #e5edf7;
   --midnight-border: rgba(245, 158, 11, 0.18);
+  --desktop-font-scale: 1;
+  --desktop-zoom-factor: 0.5;
+  --desktop-letter-spacing: 0em;
+  --desktop-line-height: 1.5;
+}
+
+html {
+  font-size: calc(16px * var(--desktop-font-scale));
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+html[data-desktop-profile='browser-match-brave'] {
+  font-size: 12px !important;
+  text-size-adjust: 70% !important;
+  -webkit-text-size-adjust: 70% !important;
 }
 
 body {
@@ -20,7 +36,32 @@ body {
     radial-gradient(circle at top, rgba(249, 115, 22, 0.2), transparent 30%),
     linear-gradient(180deg, #050816 0%, #09101f 40%, #05070f 100%);
   background-size: 18px 18px, 18px 18px, auto, auto;
-  font-family: "SF Pro Display", "Segoe UI", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  font-kerning: normal;
+  font-synthesis: none;
+  letter-spacing: var(--desktop-letter-spacing);
+  line-height: var(--desktop-line-height);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body[data-native-desktop='true'] {
+  background-attachment: fixed;
+}
+
+html[data-desktop-profile='browser-match-brave'] body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-feature-settings: "kern" 1, "liga" 1, "clig" 1;
+}
+
+#root {
+  min-height: 100vh;
+  isolation: isolate;
+}
+
+body[data-native-desktop='true'] .ansi-terminal {
+  text-rendering: geometricPrecision;
 }
 
 ::-webkit-scrollbar {

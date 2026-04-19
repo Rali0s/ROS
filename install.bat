@@ -51,6 +51,8 @@ if exist "%CARGO_BIN%\cargo.exe" (
   set "PATH=%CARGO_BIN%;%PATH%"
   echo [ROS] Installing wasm-pack (optional build helper)...
   "%CARGO_BIN%\cargo.exe" install wasm-pack
+  echo [ROS] Installing Tauri CLI for desktop mode...
+  "%CARGO_BIN%\cargo.exe" install tauri-cli
 ) else (
   echo [ROS][warn] Cargo was not found after rustup install. Skipping wasm-pack.
 )

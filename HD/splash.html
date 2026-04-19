@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ROS::Terminal Splash</title>
+  <style>
+    :root {
+      --bg-0: #020608;
+      --bg-1: #071317;
+      --bg-2: #0d1f24;
+      --glass: rgba(8, 28, 32, 0.34);
+      --glass-strong: rgba(10, 36, 42, 0.48);
+      --line: rgba(144, 255, 245, 0.22);
+      --line-soft: rgba(144, 255, 245, 0.08);
+      --glow: #83fff0;
+      --glow-soft: rgba(131, 255, 240, 0.35);
+      --text: #aafcf4;
+      --text-dim: rgba(170, 252, 244, 0.68);
+      --violet: rgba(110, 86, 255, 0.22);
+      --shadow: 0 0 30px rgba(131, 255, 240, 0.16), 0 0 80px rgba(131, 255, 240, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg-0);
+      color: var(--text);
+      font-family: "SFMono-Regular", "Cascadia Code", "IBM Plex Mono", "Fira Code", Consolas, monospace;
+      overflow: hidden;
+    }
+
+    body {
+      position: relative;
+      background:
+        radial-gradient(circle at 50% 58%, rgba(115, 255, 240, 0.20), transparent 12%),
+        radial-gradient(circle at 50% 55%, rgba(145, 255, 245, 0.12), transparent 22%),
+        linear-gradient(180deg, #0a1518 0%, #030607 52%, #010304 100%);
+    }
+
+    .scene {
+      position: relative;
+      height: 100%;
+      width: 100%;
+      isolation: isolate;
+      overflow: hidden;
+    }
+
+    .fog,
+    .scanlines,
+    .noise,
+    .grid,
+    .rain,
+    .vignette,
+    .beam,
+    .hex {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .vignette {
+      background: radial-gradient(circle, transparent 32%, rgba(0,0,0,0.35) 68%, rgba(0,0,0,0.78) 100%);
+      z-index: 20;
+    }
+
+    .fog {
+      background:
+        radial-gradient(circle at 50% 32%, rgba(200,255,252,0.12), transparent 26%),
+        radial-gradient(circle at 50% 52%, rgba(136,255,244,0.10), transparent 34%),
+        radial-gradient(circle at 10% 80%, rgba(115, 255, 240, 0.05), transparent 16%),
+        radial-gradient(circle at 90% 78%, rgba(115, 255, 240, 0.05), transparent 18%);
+      filter: blur(12px);
+      opacity: 0.9;
+      z-index: 3;
+    }
+
+    .scanlines {
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(210, 255, 252, 0.032) 0px,
+        rgba(210, 255, 252, 0.032) 1px,
+        transparent 2px,
+        transparent 4px
+      );
+      mix-blend-mode: screen;
+      opacity: 0.18;
+      z-index: 18;
+    }
+
+    .noise {
+      background-image:
+        radial-gradient(circle at 20% 30%, rgba(255,255,255,0.07) 0 1px, transparent 1.4px),
+        radial-gradient(circle at 80% 20%, rgba(255,255,255,0.06) 0 1px, transparent 1.4px),
+        radial-gradient(circle at 70% 75%, rgba(255,255,255,0.05) 0 1px, transparent 1.2px),
+        radial-gradient(circle at 40% 80%, rgba(255,255,255,0.04) 0 1px, transparent 1.1px);
+      background-size: 240px 240px, 310px 310px, 270px 270px, 180px 180px;
+      opacity: 0.18;
+      z-index: 2;
+    }
+
+    .grid {
+      background:
+        linear-gradient(rgba(130,255,244,0.08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(130,255,244,0.08) 1px, transparent 1px);
+      background-size: 64px 64px;
+      mask-image: linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.3) 36%, rgba(255,255,255,0.88) 100%);
+      transform: perspective(900px) rotateX(80deg) scale(1.55) translateY(22%);
+      transform-origin: center bottom;
+      opacity: 0.16;
+      z-index: 1;
+    }
+
+    .hex {
+      background-image:
+        linear-gradient(30deg, rgba(131,255,240,0.05) 12%, transparent 12.5%, transparent 87%, rgba(131,255,240,0.05) 87.5%, rgba(131,255,240,0.05)),
+        linear-gradient(150deg, rgba(131,255,240,0.05) 12%, transparent 12.5%, transparent 87%, rgba(131,255,240,0.05) 87.5%, rgba(131,255,240,0.05)),
+        linear-gradient(90deg, rgba(131,255,240,0.04) 2%, transparent 2.5%, transparent 97%, rgba(131,255,240,0.04) 97.5%, rgba(131,255,240,0.04));
+      background-size: 66px 114px;
+      background-position: 0 0, 0 0, 33px 57px;
+      mask-image: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.5), transparent 72%);
+      opacity: 0.12;
+      z-index: 4;
+    }
+
+    .rain {
+      background-image:
+        repeating-linear-gradient(90deg,
+          transparent 0 48px,
+          rgba(131,255,240,0.05) 48px 49px,
+          transparent 49px 96px);
+      mask-image: linear-gradient(to bottom, transparent, rgba(255,255,255,0.75), transparent 92%);
+      opacity: 0.14;
+      animation: drift 10s linear infinite;
+      z-index: 5;
+    }
+
+    .beam {
+      left: 50%;
+      top: 0;
+      width: 30vw;
+      transform: translateX(-50%);
+      background: linear-gradient(to bottom, rgba(170,255,247,0) 0%, rgba(170,255,247,0.08) 22%, rgba(170,255,247,0.26) 64%, rgba(170,255,247,0) 100%);
+      filter: blur(10px);
+      opacity: 0.9;
+      z-index: 6;
+    }
+
+    .city {
+      position: absolute;
+      inset: 0;
+      z-index: 7;
+      pointer-events: none;
+    }
+
+    .tower {
+      position: absolute;
+      bottom: 33%;
+      width: clamp(40px, 5vw, 90px);
+      background: linear-gradient(to bottom, rgba(18,42,48,0.82), rgba(6,18,22,0.96));
+      border: 1px solid rgba(140,255,246,0.06);
+      box-shadow: inset 0 0 28px rgba(131,255,240,0.05), 0 0 24px rgba(131,255,240,0.03);
+    }
+
+    .tower::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(140,255,246,0.12) 0px,
+        rgba(140,255,246,0.12) 1px,
+        transparent 5px,
+        transparent 12px
+      );
+      opacity: 0.16;
+    }
+
+    .tower::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      top: -12px;
+      width: 2px;
+      height: 12px;
+      background: rgba(160,255,248,0.32);
+      box-shadow: 0 0 12px rgba(131,255,240,0.22);
+    }
+
+    .t1 { left: 10%; height: 44%; }
+    .t2 { left: 18%; height: 58%; width: 7vw; }
+    .t3 { left: 29%; height: 37%; }
+    .t4 { left: 39%; height: 67%; width: 8vw; }
+    .t5 { left: 50%; height: 82%; width: 8.5vw; box-shadow: inset 0 0 36px rgba(131,255,240,0.08), 0 0 40px rgba(131,255,240,0.05); }
+    .t6 { left: 63%; height: 60%; width: 7vw; }
+    .t7 { left: 74%; height: 46%; }
+    .t8 { left: 82%; height: 63%; width: 7vw; }
+
+    .terminal-shell {
+      position: absolute;
+      left: 50%;
+      bottom: 12%;
+      transform: translateX(-50%);
+      width: min(84vw, 1160px);
+      height: min(46vh, 520px);
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(13, 36, 42, 0.18), rgba(4, 15, 18, 0.34));
+      border: 1px solid rgba(162,255,248,0.28);
+      box-shadow: var(--shadow), inset 0 0 0 1px rgba(255,255,255,0.035);
+      backdrop-filter: blur(14px) saturate(120%);
+      -webkit-backdrop-filter: blur(14px) saturate(120%);
+      z-index: 12;
+      overflow: hidden;
+    }
+
+    .terminal-shell::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(120deg, rgba(255,255,255,0.05), transparent 20%, transparent 80%, rgba(255,255,255,0.025)),
+        radial-gradient(circle at 50% 0%, rgba(131,255,240,0.08), transparent 32%);
+      pointer-events: none;
+    }
+
+    .terminal-shell::after {
+      content: "";
+      position: absolute;
+      inset: 12px;
+      border: 1px solid rgba(154,255,247,0.08);
+      border-radius: 12px;
+      pointer-events: none;
+    }
+
+    .terminal-hud {
+      position: relative;
+      display: grid;
+      grid-template-columns: 1.25fr 1fr 0.9fr;
+      gap: 1rem;
+      height: calc(100% - 64px);
+      padding: 26px 26px 12px;
+    }
+
+    .panel {
+      position: relative;
+      border: 1px solid var(--line-soft);
+      background: linear-gradient(180deg, rgba(8, 24, 28, 0.32), rgba(4, 12, 16, 0.12));
+      overflow: hidden;
+    }
+
+    .panel::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 1px;
+      width: 100%;
+      background: linear-gradient(to right, transparent, rgba(165,255,249,0.5), transparent);
+      opacity: 0.5;
+    }
+
+    .panel.left {
+      padding: 16px 16px 18px;
+      border-radius: 10px;
+    }
+
+    .panel.center {
+      border-radius: 999px 999px 12px 12px / 220px 220px 12px 12px;
+      background:
+        radial-gradient(circle at 50% 62%, rgba(127,255,242,0.10), transparent 18%),
+        linear-gradient(180deg, rgba(8, 24, 28, 0.18), rgba(4, 12, 16, 0.08));
+    }
+
+    .panel.right {
+      display: grid;
+      grid-template-rows: 1fr auto 1fr;
+      gap: 14px;
+      background: transparent;
+      border: 0;
+    }
+
+    .subpanel {
+      position: relative;
+      border: 1px solid var(--line-soft);
+      border-radius: 10px;
+      background: linear-gradient(180deg, rgba(8, 24, 28, 0.3), rgba(4, 12, 16, 0.12));
+      padding: 14px;
+      overflow: hidden;
+    }
+
+    .label {
+      color: var(--text-dim);
+      letter-spacing: 0.16em;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .log {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      font-size: 0.74rem;
+      color: rgba(175,255,248,0.9);
+    }
+
+    .log-line {
+      display: grid;
+      grid-template-columns: 52px 1fr 16px;
+      gap: 12px;
+      align-items: center;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .log-line .dim {
+      color: rgba(170,252,244,0.44);
+    }
+
+    .bar {
+      position: relative;
+      height: 9px;
+      border: 1px solid rgba(131,255,240,0.18);
+      background: rgba(131,255,240,0.05);
+      overflow: hidden;
+    }
+
+    .bar > span {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: var(--w, 40%);
+      background: linear-gradient(90deg, rgba(131,255,240,0.18), rgba(131,255,240,0.58));
+      box-shadow: 0 0 10px rgba(131,255,240,0.24);
+    }
+
+    .center-core {
+      position: absolute;
+      left: 50%;
+      top: 58%;
+      transform: translate(-50%, -50%);
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--glow);
+      box-shadow: 0 0 18px rgba(131,255,240,0.9), 0 0 48px rgba(131,255,240,0.45);
+    }
+
+    .center-ring,
+    .center-ring::before,
+    .center-ring::after {
+      position: absolute;
+      content: "";
+      left: 50%;
+      top: 58%;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      border: 1px solid rgba(155,255,247,0.18);
+    }
+
+    .center-ring {
+      width: 170px;
+      height: 170px;
+      box-shadow: 0 0 24px rgba(131,255,240,0.06);
+    }
+
+    .center-ring::before {
+      width: 260px;
+      height: 260px;
+      opacity: 0.6;
+    }
+
+    .center-ring::after {
+      width: 360px;
+      height: 360px;
+      opacity: 0.35;
+    }
+
+    .axis-h,
+    .axis-v {
+      position: absolute;
+      background: linear-gradient(to right, transparent, rgba(170,252,244,0.28), transparent);
+    }
+
+    .axis-h {
+      left: 12%;
+      right: 12%;
+      top: 58%;
+      height: 1px;
+    }
+
+    .axis-v {
+      top: 10%;
+      bottom: 10%;
+      left: 50%;
+      width: 1px;
+      background: linear-gradient(to bottom, transparent, rgba(170,252,244,0.4), transparent);
+    }
+
+    .vector {
+      position: absolute;
+      left: 50%;
+      top: 58%;
+      transform-origin: 0 0;
+      height: 1px;
+      background: linear-gradient(to right, rgba(170,252,244,0.28), transparent);
+      opacity: 0.65;
+    }
+
+    .vector.v1 { width: 180px; transform: rotate(-22deg); }
+    .vector.v2 { width: 135px; transform: rotate(12deg); }
+    .vector.v3 { width: 160px; transform: rotate(165deg); }
+    .vector.v4 { width: 126px; transform: rotate(96deg); }
+
+    .sigils {
+      display: flex;
+      justify-content: center;
+      gap: 1.1rem;
+      color: rgba(170,252,244,0.8);
+      font-size: 1rem;
+      letter-spacing: 0.2em;
+      align-self: center;
+    }
+
+    .chip-list {
+      display: grid;
+      gap: 0.55rem;
+      font-size: 0.72rem;
+    }
+
+    .chip {
+      padding: 0.58rem 0.72rem;
+      border: 1px solid rgba(131,255,240,0.1);
+      background: rgba(131,255,240,0.035);
+      color: rgba(173,255,248,0.86);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .chip .status {
+      color: var(--glow);
+      text-shadow: 0 0 8px rgba(131,255,240,0.35);
+    }
+
+    .terminal-footer {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 0 22px;
+      border-top: 1px solid rgba(144,255,245,0.1);
+      background: linear-gradient(180deg, rgba(5, 14, 16, 0.08), rgba(2, 10, 12, 0.24));
+      color: var(--text);
+      font-size: 0.86rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .bootline {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .bootline strong {
+      color: var(--glow);
+      font-weight: 600;
+      text-shadow: 0 0 10px rgba(131,255,240,0.25);
+    }
+
+    .cursor {
+      width: 10px;
+      height: 1.1em;
+      background: var(--glow);
+      box-shadow: 0 0 12px rgba(131,255,240,0.55);
+      animation: blink 1.05s steps(1) infinite;
+    }
+
+    .orb {
+      position: absolute;
+      left: 50%;
+      bottom: calc(12% - 8px);
+      transform: translateX(-50%);
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--glow);
+      box-shadow: 0 0 18px rgba(131,255,240,0.55);
+      z-index: 13;
+    }
+
+    .frame-corner {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      border-color: rgba(170,252,244,0.58);
+      border-style: solid;
+      z-index: 14;
+      opacity: 0.7;
+    }
+
+    .fc-tl { left: 16px; top: 16px; border-width: 1px 0 0 1px; }
+    .fc-tr { right: 16px; top: 16px; border-width: 1px 1px 0 0; }
+    .fc-bl { left: 16px; bottom: 16px; border-width: 0 0 1px 1px; }
+    .fc-br { right: 16px; bottom: 16px; border-width: 0 1px 1px 0; }
+
+    @keyframes blink {
+      0%, 48% { opacity: 1; }
+      49%, 100% { opacity: 0; }
+    }
+
+    @keyframes drift {
+      from { transform: translateY(-2%); }
+      to { transform: translateY(2%); }
+    }
+
+    @media (max-width: 1100px) {
+      .terminal-shell {
+        width: min(92vw, 1160px);
+        height: min(54vh, 560px);
+      }
+
+      .terminal-hud {
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr auto;
+      }
+
+      .panel.center {
+        min-height: 240px;
+      }
+
+      .panel.right {
+        grid-column: 1 / -1;
+        grid-template-columns: 1fr auto 1fr;
+        grid-template-rows: 1fr;
+        align-items: stretch;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .tower { bottom: 38%; }
+
+      .terminal-shell {
+        bottom: 9%;
+        width: 94vw;
+        height: 64vh;
+        border-radius: 14px;
+      }
+
+      .terminal-hud {
+        display: flex;
+        flex-direction: column;
+        padding: 18px 18px 10px;
+        gap: 0.8rem;
+        overflow: auto;
+      }
+
+      .panel.center {
+        min-height: 220px;
+      }
+
+      .panel.right {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .terminal-footer {
+        font-size: 0.68rem;
+        letter-spacing: 0.08em;
+        padding: 0 14px;
+      }
+
+      .bootline:last-child {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="scene">
+    <div class="grid"></div>
+    <div class="hex"></div>
+    <div class="noise"></div>
+    <div class="fog"></div>
+    <div class="rain"></div>
+    <div class="beam"></div>
+
+    <section class="city" aria-hidden="true">
+      <div class="tower t1"></div>
+      <div class="tower t2"></div>
+      <div class="tower t3"></div>
+      <div class="tower t4"></div>
+      <div class="tower t5"></div>
+      <div class="tower t6"></div>
+      <div class="tower t7"></div>
+      <div class="tower t8"></div>
+    </section>
+
+    <section class="terminal-shell" aria-label="ROS Terminal splash interface">
+      <span class="frame-corner fc-tl"></span>
+      <span class="frame-corner fc-tr"></span>
+      <span class="frame-corner fc-bl"></span>
+      <span class="frame-corner fc-br"></span>
+
+      <div class="terminal-hud">
+        <section class="panel left">
+          <div class="label">Core Runtime // Glass Citadel</div>
+          <div class="log">
+            <div class="log-line"><span class="dim">PROC</span><span>cipher.mesh.handshake</span><span>✓</span></div>
+            <div class="log-line"><span class="dim">AUTH</span><span>local_only context locked</span><span>✓</span></div>
+            <div class="log-line"><span class="dim">EDGE</span><span>relay vector dampened</span><span>✓</span></div>
+            <div class="log-line"><span class="dim">NODE</span><span>citadel uplink synchronized</span><span>✓</span></div>
+            <div class="log-line"><span class="dim">SIG</span><span>low-noise surveillance mode</span><span>✓</span></div>
+          </div>
+
+          <div class="label" style="margin-top: 18px;">Subsystem Integrity</div>
+          <div class="log" style="gap: 0.8rem;">
+            <div>
+              <div class="log-line" style="grid-template-columns: 72px 1fr; margin-bottom: 0.35rem;"><span class="dim">ENCRYPT</span><span>AES // SIGNAL WRAP</span></div>
+              <div class="bar" style="--w: 92%;"><span></span></div>
+            </div>
+            <div>
+              <div class="log-line" style="grid-template-columns: 72px 1fr; margin-bottom: 0.35rem;"><span class="dim">MESH</span><span>INTERLINK ROUTING</span></div>
+              <div class="bar" style="--w: 78%;"><span></span></div>
+            </div>
+            <div>
+              <div class="log-line" style="grid-template-columns: 72px 1fr; margin-bottom: 0.35rem;"><span class="dim">TRACE</span><span>RESIDUAL NOISE FILTER</span></div>
+              <div class="bar" style="--w: 64%;"><span></span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel center" aria-hidden="true">
+          <div class="axis-h"></div>
+          <div class="axis-v"></div>
+          <div class="center-ring"></div>
+          <div class="center-core"></div>
+          <div class="vector v1"></div>
+          <div class="vector v2"></div>
+          <div class="vector v3"></div>
+          <div class="vector v4"></div>
+        </section>
+
+        <section class="panel right">
+          <div class="subpanel">
+            <div class="label">Glyph Layer</div>
+            <div class="chip-list">
+              <div class="chip"><span>Σ / CONTROL</span><span class="status">LIVE</span></div>
+              <div class="chip"><span>∞ / SIGNAL</span><span class="status">BOUND</span></div>
+              <div class="chip"><span>◬ / NODE</span><span class="status">STEADY</span></div>
+            </div>
+          </div>
+
+          <div class="sigils" aria-hidden="true">
+            <span>Σ</span><span>∞</span><span>◬</span>
+          </div>
+
+          <div class="subpanel">
+            <div class="label">Threat Silence</div>
+            <div class="chip-list">
+              <div class="chip"><span>packet bloom</span><span class="status">LOW</span></div>
+              <div class="chip"><span>anomaly residue</span><span class="status">MUTED</span></div>
+              <div class="chip"><span>citadel horizon</span><span class="status">SEALED</span></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <footer class="terminal-footer">
+        <div class="bootline">
+          <strong>ROS::TERMINAL</strong>
+          <span>/</span>
+          <span>AUTH::LOCAL-ONLY</span>
+          <span>/</span>
+          <span>SIGNAL::ENCRYPTED</span>
+        </div>
+        <div class="bootline">
+          <span>boot sequence</span>
+          <div class="cursor" aria-hidden="true"></div>
+        </div>
+      </footer>
+    </section>
+
+    <div class="orb" aria-hidden="true"></div>
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+  </main>
+</body>
+</html>

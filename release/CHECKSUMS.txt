@@ -1,0 +1,1 @@
+feea0c8ac0aaef05162946459ef4c920a9f3887ffefdcc30f9e8a2344f7f6d16  src-tauri/target/release/bundle/dmg/OSA Midnight Oil_0.1.0_aarch64.dmg
