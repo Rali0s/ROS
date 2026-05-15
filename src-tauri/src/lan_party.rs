@@ -48,6 +48,7 @@ pub struct LanSharedNote {
     pub note_id: String,
     pub title: String,
     pub excerpt: String,
+    pub body: String,
     pub sender_host: String,
     pub created_at: String,
 }
@@ -248,6 +249,7 @@ pub struct ShareNoteArgs {
     pub note_id: String,
     pub title: String,
     pub excerpt: String,
+    pub body: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -711,6 +713,7 @@ pub fn share_note(args: ShareNoteArgs) -> LanPartyState {
         note_id: args.note_id,
         title: args.title,
         excerpt: args.excerpt,
+        body: args.body,
         sender_host: local.codename.clone(),
         created_at: iso_now(),
     };

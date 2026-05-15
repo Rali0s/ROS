@@ -29,6 +29,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": [
+      "../scripts/accessibility_voice.py"
+    ],
     "icon": [
       "icons/icon.png",
       "icons/icon.ico"

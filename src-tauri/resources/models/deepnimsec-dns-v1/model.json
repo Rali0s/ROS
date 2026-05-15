@@ -1,0 +1,20 @@
+{
+  "id": "security-model-v1",
+  "displayName": "DeepNimSec / Security Model v1",
+  "friendlyName": "Security Model v1",
+  "technicalName": "DNS-v1",
+  "type": "security",
+  "role": "deepnimsec-defensive-review",
+  "runtime": "ollama-compatible",
+  "runtimeModel": "DNS-v1",
+  "baseModel": "llama3.2:3b",
+  "artifactStatus": "profile-create",
+  "blueprintSource": "/Users/premise/Documents/Blueprint/res/defensive/DeepNimSec_v1.json",
+  "description": "DeepNimSec profile wired from Blueprint defensive schema and prompt material. ROS prepares this as an Ollama-compatible local profile; no proprietary model weights are bundled.",
+  "capabilities": [
+    "Review risk",
+    "Normalize evidence",
+    "Map controls",
+    "Score findings"
+  ]
+}

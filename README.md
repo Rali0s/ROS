@@ -19,6 +19,15 @@ The project is designed to feel like a personal operations desk rather than a cl
 - `Control Room`: backup, recovery, trust posture, export/import, and destructive controls
 - `Midnight Console`: local read-only console into the workspace state
 
+## Local Models
+
+ROS is moving toward a model-first local AI experience. Regular users should see model cards and plain-language capabilities, not raw API setup.
+
+- `Security Model v1 / DNS-v1`: a defensive review model for risk summaries, alert explanation, evidence review, and safer next steps.
+- The first integration phase includes the model catalog and a placeholder bundled-model manifest.
+- The actual DNS-v1 model artifact is not included yet.
+- Developer and AI-builder settings live behind Advanced setup, where local endpoints and technical model names remain available.
+
 ## Security Model
 
 - Workspace data is intended to be encrypted at rest.

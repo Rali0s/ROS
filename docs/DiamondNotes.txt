@@ -1,0 +1,128 @@
+Each node should include:
+icon
+category name
+small app count
+subtle hover/focus state
+Category Mapping
+RESEARCH
+Purpose:
+Knowledge, notes, studies, documents, synthesis.
+Apps:
+Library
+Research Vault
+Vault Notes
+Bookmarks
+Research Method Vault
+Visual Charting
+SIGNAL
+Purpose:
+Networks, external systems, exchange, communications.
+Apps:
+ROS Comms
+Nostr Lounge
+P2P Comms
+LAN Share
+Wallet Vault
+UTILITY
+Purpose:
+Execution, scheduling, tools, local operations.
+Apps:
+Calendar
+Work Clocks
+Terminal
+Settings
+Inventory
+PRIMARY
+Purpose:
+Operator identity, personal control, profile systems.
+Apps:
+Overview
+Profile Organizer
+Psychology Profiling
+Control Room
+Operator Profile
+Progressive Disclosure Behavior
+Do not show all apps at once.
+Each doctrine node should expose only a small app tray.
+Preferred behavior:
+Default state: show the diamond and maybe one selected category tray.
+Hover/focus category: subtly reveal that category’s top 3 apps.
+Click category: expand that category tray with more apps.
+Click app: open the existing module.
+Click center: open the Operator Memory Cockpit.
+This avoids a cluttered app grid while still making the system navigable.
+App Tray Design
+App trays should be restrained horizontal or vertical black-glass mini-cards.
+Each app card should include:
+small icon
+app name
+optional short category label
+no large descriptions unless expanded
+Example:
+RESEARCH
+[ Library ] [ Research Vault ] [ Vault Notes ]
+Expand Research Apps >
+Do not create a dense radial explosion of all apps.
+Animation Rules
+Use minimal interface motion only.
+Allowed:
+120ms–220ms fade
+subtle scale on hover
+soft teal glow on selected node
+light drawer slide for app trays
+very subtle line activation
+slight background parallax if already supported
+Avoid:
+spinning icons
+orbiting apps
+particle effects
+long cinematic transitions
+rotating radial menus
+complex multi-stage animations
+anything that makes the app feel like a game menu
+The desired feeling is:
+instrument panel activation, not sci-fi showpiece.
+Implementation Constraints
+Keep the current Vite React 18 + Tailwind + Tauri 2 stack.
+Do not migrate to SvelteKit.
+Do not replace the existing cockpit.
+Do not remove existing modules.
+Do not rebuild the app from scratch.
+Do not change encrypted workspace persistence.
+Do not implement new AI features as part of this task.
+Do not implement graph visualization.
+Do not implement complex animation libraries unless already present.
+Suggested Components
+Create new components under src/components/:
+EntrySurface.jsx
+DoctrineDiamond.jsx
+DoctrineNode.jsx
+DoctrineAppTray.jsx
+EntryTopChrome.jsx
+Reuse existing app/module registry data if available.
+If module registry names already exist, map those modules into doctrine categories without duplicating module definitions.
+Routing / State Behavior
+Add a simple UI state:
+entryMode: true | false
+selectedDoctrine: "research" | "signal" | "utility" | "primary"
+Behavior:
+App starts on Entry Surface when workspace is unlocked.
+Clicking UNLOCK COCKPIT switches to cockpit mode.
+Clicking an app opens the existing module/window.
+User should be able to return to Entry Surface from cockpit later if practical, but this can be a secondary enhancement.
+Acceptance Criteria
+Entry Surface renders as the first unlocked view.
+Center diamond opens the existing Operator Memory Cockpit.
+Four doctrine nodes are visible and clickable.
+Each doctrine node reveals an app tray.
+App trays open existing modules without removing legacy module behavior.
+Layout remains spacious and readable at desktop resolution.
+No dense 18-app grid appears on entry.
+npx eslint src passes.
+npm run build passes.
+
+The phrase I’d use in your own notes is:
+
+> **ROS Entry Surface: a doctrine-based diamond launcher that progressively reveals app clusters and unlocks into the Operator Memory Cockpit.**
+
+That gives Codex the right mental model: **launcher first, cockpit second, modules third.**

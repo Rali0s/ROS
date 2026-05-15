@@ -45,6 +45,7 @@ const FSocietyApp = () => {
   const {
     data,
     session,
+    updateWorkspaceData,
     syncLanPartyState,
     setLanPartyEnabled,
     scanLanPartyPeers,
@@ -118,6 +119,9 @@ const FSocietyApp = () => {
 
   const queueItems = [...(lan.queue || [])].sort(
     (left, right) => new Date(right.updatedAt || 0) - new Date(left.updatedAt || 0),
+  );
+  const sharedNotes = [...(lan.sharedNotes || [])].sort(
+    (left, right) => new Date(right.createdAt || 0) - new Date(left.createdAt || 0),
   );
 
   const peerCount = lan.peers?.length || 0;
@@ -583,6 +587,60 @@ const FSocietyApp = () => {
                       </div>
                     )}
                   </div>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-[22px] border border-white/8 bg-black/15 p-4">
+                <div className="flex items-center gap-2 text-[13px] font-semibold text-white">
+                  <FileUp size={16} />
+                  Shared notes feed
+                </div>
+                <div className="mt-3 space-y-3">
+                  {sharedNotes.length ? (
+                    sharedNotes.map((entry) => (
+                      <div key={entry.id} className="rounded-2xl border border-white/8 bg-black/18 px-4 py-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-white">{entry.title}</div>
+                            <div className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                              {entry.senderHost} · {formatStamp(entry.createdAt)}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateWorkspaceData((current) => ({
+                                ...current,
+                                notes: [
+                                  {
+                                    id: createId('note'),
+                                    title: entry.title,
+                                    category: 'briefing',
+                                    tags: ['lan-handoff', entry.senderHost || 'f-society'],
+                                    pinned: false,
+                                    body: entry.body || entry.excerpt || '',
+                                    updatedAt: now(),
+                                  },
+                                  ...current.notes,
+                                ],
+                              }));
+                              setStatus(`Imported shared note: ${entry.title}`);
+                            }}
+                            className={`rounded-2xl px-3 py-2 text-xs font-semibold ${theme.primaryButtonSoft}`}
+                          >
+                            Import to Notes
+                          </button>
+                        </div>
+                        <div className="mt-3 text-sm leading-6 text-slate-300 whitespace-pre-wrap">
+                          {entry.body || entry.excerpt || 'No shared note body received.'}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-white/10 bg-black/10 px-4 py-6 text-sm text-slate-500">
+                      Shared notes will appear here after a LAN handoff arrives.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

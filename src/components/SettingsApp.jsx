@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  Accessibility,
   BadgeInfo,
   Bug,
   ClipboardCheck,
@@ -8,6 +9,7 @@ import {
   Download,
   LifeBuoy,
   Lock,
+  Printer,
   SearchCheck,
   RotateCcw,
   Shield,
@@ -16,6 +18,7 @@ import {
   TimerReset,
   Trash2,
   Upload,
+  Volume2,
   Wand2,
 } from 'lucide-react';
 import {
@@ -33,7 +36,13 @@ import {
   getWorkspaceHealth,
 } from '../utils/betaRuntime';
 import { SHELL_THEMES, WALLPAPERS } from '../utils/constants';
-import { isNativeVaultRuntime, openNativeTextFileDialog, saveNativeTextFileDialog } from '../utils/nativeVault';
+import {
+  isNativeVaultRuntime,
+  listNativeAccessibilityPrinters,
+  openNativeTextFileDialog,
+  saveNativeTextFileDialog,
+  speakNativeAccessibilityPrompt,
+} from '../utils/nativeVault';
 import { useWorkspaceData } from '../utils/workspaceStore';
 
 const triggerDownload = (content, filename) => {
@@ -71,6 +80,8 @@ const SettingsApp = () => {
   const [feedbackDraft, setFeedbackDraft] = useState(data.settings.betaFeedbackDraft || '');
   const [fileVaultEntries, setFileVaultEntries] = useState([]);
   const [fileVaultBusy, setFileVaultBusy] = useState(false);
+  const [printerStatus, setPrinterStatus] = useState(null);
+  const [accessibilityBusy, setAccessibilityBusy] = useState(false);
   const fileInputRef = useRef(null);
   const validationFileInputRef = useRef(null);
   const isNativeDesktop = isNativeVaultRuntime() && session.backend === 'tauri-native';
@@ -424,6 +435,57 @@ const SettingsApp = () => {
     }));
   };
 
+  const inspectPrinters = async () => {
+    if (!isNativeDesktop) {
+      setStatus('Printer driver inspection requires the native desktop runtime.');
+      return;
+    }
+
+    setAccessibilityBusy(true);
+
+    try {
+      const response = await listNativeAccessibilityPrinters();
+      setPrinterStatus(response);
+      const count = response?.printers?.length || 0;
+      setStatus(
+        count
+          ? `Detected ${count} printer driver${count === 1 ? '' : 's'} for accessible output.`
+          : 'No printer drivers were reported by the host OS.',
+      );
+    } catch (error) {
+      setStatus(error.message || 'Unable to inspect printer drivers.');
+    } finally {
+      setAccessibilityBusy(false);
+    }
+  };
+
+  const testVoicePrompt = async () => {
+    if (!isNativeDesktop) {
+      setStatus('Local Python voice feedback requires the native desktop runtime.');
+      return;
+    }
+
+    setAccessibilityBusy(true);
+
+    try {
+      await speakNativeAccessibilityPrompt({
+        text: 'ROS voice feedback is ready.',
+        enabled: data.settings.accessibilityVoiceFeedbackEnabled,
+        voice: data.settings.accessibilityVoiceName,
+        rate: data.settings.accessibilityVoiceRate,
+      });
+      setStatus(
+        data.settings.accessibilityVoiceFeedbackEnabled
+          ? 'Voice feedback test sent to the local Python helper.'
+          : 'Voice feedback is off. Enable it before ROS speaks.',
+      );
+    } catch (error) {
+      setStatus(error.message || 'Unable to run the local Python voice helper.');
+    } finally {
+      setAccessibilityBusy(false);
+    }
+  };
+
   const totalFileVaultBytes = fileVaultEntries.reduce((sum, entry) => sum + (entry.sizeBytes || 0), 0);
   const orphanedFileVaultEntries = fileVaultEntries.filter((entry) => entry.orphaned);
   const linkedFileVaultEntries = fileVaultEntries.filter((entry) => !entry.orphaned);
@@ -525,10 +587,11 @@ const SettingsApp = () => {
         <div className="mt-5 rounded-2xl border border-violet-500/18 bg-violet-500/8 p-4">
           <div className="flex items-center gap-2 text-sm font-semibold text-violet-100">
             <BadgeInfo size={16} />
-            {APP_RELEASE.channel}
+            {APP_RELEASE.displayVersion}
           </div>
           <div className="mt-3 space-y-2 text-sm text-slate-300">
             <div>Version: {APP_RELEASE.version}</div>
+            <div>Channel: {APP_RELEASE.channel}</div>
             <div>Entitlement: {entitlementStatus.label}</div>
             <div>Install ID: {accountStatus.installId}</div>
           </div>
@@ -745,7 +808,7 @@ const SettingsApp = () => {
             <div className="mt-5 grid gap-3 md:grid-cols-2">
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                 <div className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Release status</div>
-                <div className="mt-2 text-lg font-semibold text-white">{releaseStatus.version}</div>
+                <div className="mt-2 text-lg font-semibold text-white">{releaseStatus.displayVersion}</div>
                 <div className="mt-1 text-sm text-slate-400">
                   {releaseStatus.channel} · {releaseStatus.runtime}
                 </div>
@@ -980,6 +1043,142 @@ const SettingsApp = () => {
         </div>
 
         <div className="mt-5 grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+          <article className="rounded-2xl border border-cyan-500/20 bg-[linear-gradient(180deg,rgba(8,145,178,0.12),rgba(2,6,23,0.96))] p-5">
+            <div className="flex items-center gap-2 text-sm font-semibold text-cyan-200">
+              <Accessibility size={16} />
+              Accessibility output
+            </div>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              Configure focused navigation, host printer drivers, and local voice prompts for screen-reader and braille workflows.
+            </p>
+
+            <label className="mt-5 block rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
+              <span className="block text-xs uppercase tracking-[0.24em] text-slate-500">Input mode</span>
+              <select
+                value={data.settings.accessibilityMode || 'standard'}
+                onChange={(event) =>
+                  updateWorkspaceData((current) => ({
+                    ...current,
+                    settings: {
+                      ...current.settings,
+                      accessibilityMode: event.target.value,
+                    },
+                  }))
+                }
+                className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 outline-none transition focus:border-cyan-400/40"
+              >
+                <option value="standard">Standard</option>
+                <option value="focus">Focus mode</option>
+                <option value="low-vision">Low vision</option>
+              </select>
+            </label>
+
+            <div className="mt-4 space-y-3">
+              {[
+                ['accessibilityPrinterOutputEnabled', 'Enable printer output controls', Printer],
+                ['accessibilityVoiceFeedbackEnabled', 'Enable voice prompts only when requested', Volume2],
+              ].map(([key, label, Icon]) => (
+                <label
+                  key={key}
+                  className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex rounded-xl border border-white/10 bg-white/5 p-2 text-cyan-200">
+                      <Icon size={15} />
+                    </span>
+                    <span className="text-sm text-slate-200">{label}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleSetting(key)}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] transition ${
+                      data.settings[key] ? 'bg-cyan-500 text-slate-950' : 'bg-white/5 text-slate-400'
+                    }`}
+                  >
+                    {data.settings[key] ? 'On' : 'Off'}
+                  </button>
+                </label>
+              ))}
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
+                <span className="block text-xs uppercase tracking-[0.24em] text-slate-500">Voice name</span>
+                <input
+                  value={data.settings.accessibilityVoiceName || ''}
+                  onChange={(event) =>
+                    updateWorkspaceData((current) => ({
+                      ...current,
+                      settings: {
+                        ...current.settings,
+                        accessibilityVoiceName: event.target.value,
+                      },
+                    }))
+                  }
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 outline-none transition focus:border-cyan-400/40"
+                  placeholder="System default"
+                />
+              </label>
+
+              <label className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
+                <span className="block text-xs uppercase tracking-[0.24em] text-slate-500">Voice rate</span>
+                <input
+                  type="number"
+                  min="80"
+                  max="320"
+                  value={data.settings.accessibilityVoiceRate || 175}
+                  onChange={(event) => updateNumericSetting('accessibilityVoiceRate', event.target.value, 175)}
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 outline-none transition focus:border-cyan-400/40"
+                />
+              </label>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={inspectPrinters}
+                disabled={accessibilityBusy || !data.settings.accessibilityPrinterOutputEnabled}
+                className="inline-flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Printer size={16} />
+                Inspect printers
+              </button>
+              <button
+                type="button"
+                onClick={testVoicePrompt}
+                disabled={accessibilityBusy}
+                className="inline-flex items-center gap-2 rounded-xl bg-white/5 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Volume2 size={16} />
+                Test voice
+              </button>
+            </div>
+
+            {printerStatus ? (
+              <div className="mt-4 space-y-3">
+                {(printerStatus.printers || []).slice(0, 6).map((printer) => (
+                  <div key={printer.name} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="text-sm font-semibold text-cyan-100">
+                      {printer.name}
+                      {printer.isDefault ? ' - default' : ''}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-400">
+                      {printer.driver || printer.deviceUri || printer.status || 'Driver details reported by host OS.'}
+                    </div>
+                    {printer.options?.length ? (
+                      <div className="mt-2 text-xs text-slate-500">{printer.options.length} driver option groups detected.</div>
+                    ) : null}
+                  </div>
+                ))}
+                {printerStatus.warnings?.length ? (
+                  <div className="rounded-2xl border border-amber-500/15 bg-amber-500/5 p-4 text-sm text-amber-100">
+                    {printerStatus.warnings.join(' ')}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </article>
+
           <article className="rounded-2xl border border-violet-500/20 bg-[linear-gradient(180deg,rgba(76,29,149,0.12),rgba(2,6,23,0.96))] p-5">
             <div className="flex items-center gap-2 text-sm font-semibold text-violet-200">
               <ShieldAlert size={16} />
@@ -1307,7 +1506,7 @@ const SettingsApp = () => {
         <div className="mt-5 rounded-2xl border border-white/10 bg-slate-900/70 p-5">
           <div className="text-sm font-semibold text-amber-300">Wallpapers</div>
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            Choose the desktop backdrop for Midnight Oil. The shell uses your provided `HD/` wallpapers.
+            Choose the desktop backdrop for Bos Taurus. The shell uses your provided `HD/` wallpapers.
           </p>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             {WALLPAPERS.map((wallpaper) => (

@@ -1,4 +1,5 @@
 import {
+  Activity,
   Binary,
   BookOpen,
   BookMarked,
@@ -7,6 +8,7 @@ import {
   FlaskConical,
   Globe2,
   KeyRound,
+  Music4,
   Network,
   Orbit,
   PackageSearch,
@@ -22,6 +24,7 @@ const wallpaperTwo = new URL('../../HD/wallpaper-two.png', import.meta.url).href
 const wallpaperThree = new URL('../../HD/wallpaper-three.png', import.meta.url).href;
 const wallpaperFour = new URL('../../HD/wallpaper-four.png', import.meta.url).href;
 const wallpaperFive = new URL('../../HD/wallpaper-five.png', import.meta.url).href;
+const bosTaurusWallpaper = new URL('../../HD/Bos_T.png', import.meta.url).href;
 const midnightOilWallpaperOne = new URL('../../HD/Midnight_Oil/State-One-Wallpaper.png', import.meta.url).href;
 const midnightOilWallpaperTwo = new URL('../../HD/Midnight_Oil/State-Two-Wallpaper.png', import.meta.url).href;
 const midnightOilLoginScreen = new URL('../../HD/Midnight_Oil/Login-Screen.png', import.meta.url).href;
@@ -33,6 +36,12 @@ const splashTwo = new URL('../../HD/Mockup.png', import.meta.url).href;
 export const BRAND_LOGO = '/osa-midnight-oil-logo.png';
 
 export const WALLPAPERS = [
+  {
+    id: 'bos-taurus',
+    title: 'Bos Taurus',
+    description: 'Operator-grade matte black bull portrait with restrained copper edge-lighting.',
+    image: bosTaurusWallpaper,
+  },
   {
     id: 'violet-surge',
     title: 'Monochrome',
@@ -65,14 +74,14 @@ export const WALLPAPERS = [
   },
   {
     id: 'midnight-oil-state-one',
-    title: 'Midnight Oil State One',
-    description: 'Steampunk riverfront skyline lit by brass towers, steam, and amber channels.',
+    title: 'Bos Taurus Foundry',
+    description: 'Foundry skyline with brass towers, steam channels, and low-visibility industrial glow.',
     image: midnightOilWallpaperOne,
   },
   {
     id: 'midnight-oil-state-two',
-    title: 'Midnight Oil State Two',
-    description: 'Pipe-network control wall with gauges, brass runs, and low steam drift.',
+    title: 'Bos Taurus Pipe Network',
+    description: 'Pipe-network control wall with gauges, brass runs, and controlled steam drift.',
     image: midnightOilWallpaperTwo,
   },
 ];
@@ -85,8 +94,8 @@ export const getDesktopBackgroundStyle = (wallpaperId) => {
 
   return {
     backgroundImage: `
-      linear-gradient(180deg, rgba(2,6,23,0.66) 0%, rgba(2,6,23,0.78) 100%),
-      radial-gradient(circle at top, rgba(249,115,22,0.12), transparent 32%),
+      linear-gradient(180deg, rgba(17,24,31,0.34) 0%, rgba(13,18,24,0.48) 100%),
+      radial-gradient(circle at top, rgba(203,213,225,0.10), transparent 34%),
       url(${wallpaper.image})
     `,
     backgroundSize: 'cover, cover, cover',
@@ -96,9 +105,9 @@ export const getDesktopBackgroundStyle = (wallpaperId) => {
 };
 
 export const BOOT_SPLASH = {
-  id: 'citadel-noir',
-  title: 'Citadel Noir',
-  subtitle: 'ROS::Terminal Splash',
+  id: 'operator-memory-workspace',
+  title: 'OSA-Midnight Oil',
+  subtitle: 'Operator Memory Workspace',
   image: splashTwo,
   fallbackImage: splashOne,
 };
@@ -122,6 +131,24 @@ export const getAuthScreenAssets = (themeId) =>
   AUTH_SCREEN_ASSETS[themeId] ?? AUTH_SCREEN_ASSETS.default;
 
 export const SHELL_THEMES = {
+  black_glass: {
+    id: 'black_glass',
+    name: 'Host Glass',
+    shortName: 'ROS',
+    accentLabel: 'Host Glass',
+    bg: 'bg-[#10171d]',
+    windowBg: 'bg-[rgba(22,29,35,0.88)]',
+    panelBg: 'bg-[rgba(26,34,40,0.62)]',
+    border: 'border-white/12',
+    borderStrong: 'border-white/16',
+    accentText: 'text-cyan-100',
+    accentChip: 'border-white/12 bg-white/[0.075] text-slate-100',
+    launcherHover: 'hover:border-white/16',
+    launcherSelected: 'border-white/18 bg-white/[0.09]',
+    lockButton: 'border-white/12 bg-white/[0.075] text-slate-100 hover:bg-white/[0.11]',
+    shellBadge: 'border-white/12 bg-white/[0.075] text-slate-100',
+    iconTone: 'border-white/12 bg-white/[0.075] text-cyan-100 shadow-black/10',
+  },
   cypher: {
     id: 'cypher',
     name: 'Cypher Citadel',
@@ -145,7 +172,7 @@ export const SHELL_THEMES = {
     id: 'midnight',
     name: 'Midnight Spectrum',
     shortName: 'OSA',
-    accentLabel: 'Midnight Oil',
+    accentLabel: 'Bos Taurus',
     bg: 'bg-slate-950',
     windowBg: 'bg-slate-950/96',
     panelBg: 'bg-slate-900/85',
@@ -161,9 +188,9 @@ export const SHELL_THEMES = {
   },
   midnight_oil: {
     id: 'midnight_oil',
-    name: 'Midnight Oil',
+    name: 'Bos Taurus',
     shortName: 'OSA',
-    accentLabel: 'Steampunk Foundry',
+    accentLabel: 'Bos Taurus',
     bg: 'bg-[#120d09]',
     windowBg: 'bg-[rgba(18,11,8,0.96)]',
     panelBg: 'bg-[rgba(28,18,12,0.84)]',
@@ -184,6 +211,36 @@ export const getShellTheme = (themeId) => SHELL_THEMES[themeId] ?? SHELL_THEMES.
 export const getAppIconTone = (app, themeId) => getShellTheme(themeId).iconTone ?? app.iconTone;
 
 export const APP_INTERIOR_THEMES = {
+  black_glass: {
+    pageBg: 'bg-[#111820]',
+    sidebarBg: 'bg-[rgba(22,29,35,0.70)]',
+    sidebarBorder: 'border-white/12',
+    panelBg: 'bg-[rgba(24,31,37,0.62)]',
+    panelBorder: 'border-white/12',
+    panelMutedBg: 'bg-white/[0.055]',
+    panelMutedBorder: 'border-white/10',
+    heroBg:
+      'bg-[linear-gradient(135deg,rgba(28,37,43,0.82),rgba(22,29,35,0.74)_58%,rgba(16,22,27,0.88)_100%)]',
+    heroBorder: 'border-white/16',
+    heroPill: 'border-white/12 bg-white/[0.075] text-slate-100',
+    accentText: 'text-cyan-100',
+    accentSoftText: 'text-slate-300',
+    input:
+      'border-white/12 bg-white/[0.06] text-slate-100 placeholder:text-slate-500 focus:border-cyan-100/30 focus:bg-white/[0.09]',
+    primaryButton: 'bg-slate-100 text-slate-950 hover:bg-white',
+    primaryButtonSoft: 'border-white/12 bg-white/[0.075] text-slate-100 hover:bg-white/[0.11]',
+    secondaryButton: 'border-white/12 bg-white/[0.06] text-slate-200 hover:bg-white/[0.1]',
+    activeChip: 'bg-slate-100 text-slate-950',
+    inactiveChip: 'bg-white/[0.045] text-slate-300 hover:bg-white/[0.08] hover:text-slate-100',
+    selectedCard: 'border-white/18 bg-white/[0.085]',
+    card: 'border-white/10 bg-white/[0.05] hover:border-white/16 hover:bg-white/[0.075]',
+    tag: 'border-white/12 bg-white/[0.06] text-slate-200',
+    linkCard: 'border-white/12 bg-white/[0.06] text-slate-200 hover:bg-white/[0.095]',
+    previewBg: 'bg-white/[0.055]',
+    headingAccent: 'text-white',
+    bulletAccent: 'bg-cyan-100',
+    codeAccent: 'text-cyan-100',
+  },
   cypher: {
     pageBg: 'bg-[#03080b]',
     sidebarBg: 'bg-[rgba(6,18,22,0.84)]',
@@ -284,10 +341,12 @@ const roomyWindow = (width, height) => ({
 
 export const APP_ORDER = [
   'overview',
+  'bps-engine',
   'library',
   'research-vault',
   'calendar',
   'notes',
+  'music-list',
   'profiles',
   'comms',
   'f-society',
@@ -309,9 +368,22 @@ export const APPS = {
     component: 'OverviewApp',
     description: 'Midnight snapshot for notes, references, and local state.',
     category: 'core',
+    doctrine: 'identity',
     defaultSize: roomyWindow(1280, 820),
     defaultFrame: { w: 1280, h: 820 },
     iconTone: 'border-amber-400/25 bg-amber-500/10 text-amber-200 shadow-amber-500/10',
+  },
+  'bps-engine': {
+    id: 'bps-engine',
+    title: 'BPS Engine',
+    icon: Activity,
+    component: 'BpsEngineApp',
+    description: 'Biopsychosocial monitoring, case-note research, and operator drift analysis.',
+    category: 'research',
+    doctrine: 'identity',
+    defaultSize: roomyWindow(1560, 930),
+    defaultFrame: { w: 1560, h: 930 },
+    iconTone: 'border-amber-300/25 bg-amber-500/10 text-amber-100 shadow-amber-700/10',
   },
   library: {
     id: 'library',
@@ -320,6 +392,7 @@ export const APPS = {
     component: 'LibraryManagerApp',
     description: 'Read-only PDF and EPUB catalog with Calibre-style metadata imports.',
     category: 'library',
+    doctrine: 'research',
     defaultSize: roomyWindow(1560, 930),
     defaultFrame: { w: 1560, h: 930 },
     iconTone: 'border-cyan-400/25 bg-cyan-500/10 text-cyan-200 shadow-cyan-500/10',
@@ -331,6 +404,7 @@ export const APPS = {
     component: 'ResearchVaultApp',
     description: 'Structured research intelligence for studies, bias models, and cross-study analysis.',
     category: 'research',
+    doctrine: 'research',
     defaultSize: roomyWindow(1600, 940),
     defaultFrame: { w: 1600, h: 940 },
     iconTone: 'border-amber-400/25 bg-amber-500/10 text-amber-200 shadow-amber-500/10',
@@ -342,6 +416,7 @@ export const APPS = {
     component: 'CalendarApp',
     description: 'Plan dates, events, checkpoints, and time-blocked work.',
     category: 'core',
+    doctrine: 'operate',
     defaultSize: roomyWindow(1440, 900),
     defaultFrame: { w: 1440, h: 900 },
     iconTone: 'border-indigo-400/25 bg-indigo-500/10 text-indigo-200 shadow-indigo-500/10',
@@ -353,9 +428,21 @@ export const APPS = {
     component: 'NotesApp',
     description: 'Markdown notes with live capture and quick templates.',
     category: 'core',
+    doctrine: 'research',
     defaultSize: roomyWindow(1440, 900),
     defaultFrame: { w: 1440, h: 900 },
     iconTone: 'border-orange-400/25 bg-orange-500/10 text-orange-200 shadow-orange-500/10',
+  },
+  'music-list': {
+    id: 'music-list',
+    title: 'Music List',
+    icon: Music4,
+    component: 'MusicListApp',
+    description: 'Simple local list of songs, artists, albums, and notes.',
+    category: 'reference',
+    defaultSize: roomyWindow(1320, 820),
+    defaultFrame: { w: 1320, h: 820 },
+    iconTone: 'border-pink-400/25 bg-pink-500/10 text-pink-200 shadow-pink-500/10',
   },
   profiles: {
     id: 'profiles',
@@ -364,6 +451,7 @@ export const APPS = {
     component: 'ProfileOrganizerApp',
     description: 'Track identities, mailboxes, logins, VPN zones, and PGP keysets.',
     category: 'vault',
+    doctrine: 'identity',
     defaultSize: roomyWindow(1480, 920),
     defaultFrame: { w: 1480, h: 920 },
     iconTone: 'border-teal-400/25 bg-teal-500/10 text-teal-200 shadow-teal-500/10',
@@ -375,6 +463,7 @@ export const APPS = {
     component: 'CommsApp',
     description: 'CypherID-bound dead-drop messaging with vault-backed identities and peers.',
     category: 'vault',
+    doctrine: 'signal',
     defaultSize: roomyWindow(1520, 920),
     defaultFrame: { w: 1520, h: 920 },
     iconTone: 'border-cyan-400/25 bg-cyan-500/10 text-cyan-200 shadow-cyan-500/10',
@@ -386,6 +475,7 @@ export const APPS = {
     component: 'FSocietyApp',
     description: 'LAN-only peer desk for discovery, chat, note handoff, and direct file sends.',
     category: 'lan',
+    doctrine: 'signal',
     defaultSize: roomyWindow(1560, 930),
     defaultFrame: { w: 1560, h: 930 },
     iconTone: 'border-amber-300/25 bg-amber-500/10 text-amber-100 shadow-amber-700/10',
@@ -397,6 +487,7 @@ export const APPS = {
     component: 'NostrLoungeApp',
     description: 'After-hours social desk for reading, posting, and loosely staying in the loop.',
     category: 'social',
+    doctrine: 'signal',
     defaultSize: roomyWindow(1560, 930),
     defaultFrame: { w: 1560, h: 930 },
     iconTone: 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100 shadow-cyan-500/10',
@@ -408,6 +499,7 @@ export const APPS = {
     component: 'FlowStudioApp',
     description: 'Wireframe charts for network, service, and workflow flows.',
     category: 'mapping',
+    doctrine: 'research',
     defaultSize: roomyWindow(1440, 900),
     defaultFrame: { w: 1440, h: 900 },
     iconTone: 'border-violet-400/25 bg-violet-500/10 text-violet-200 shadow-violet-500/10',
@@ -419,6 +511,7 @@ export const APPS = {
     component: 'BookmarksApp',
     description: 'Saved links for references, docs, and recurring tools.',
     category: 'reference',
+    doctrine: 'research',
     defaultSize: roomyWindow(1320, 820),
     defaultFrame: { w: 1320, h: 820 },
     iconTone: 'border-sky-400/25 bg-sky-500/10 text-sky-200 shadow-sky-500/10',
@@ -430,6 +523,7 @@ export const APPS = {
     component: 'InventoryApp',
     description: 'Track software, systems, methodologies, and gear.',
     category: 'reference',
+    doctrine: 'operate',
     defaultSize: roomyWindow(1280, 820),
     defaultFrame: { w: 1280, h: 820 },
     iconTone: 'border-emerald-400/25 bg-emerald-500/10 text-emerald-200 shadow-emerald-500/10',
@@ -441,6 +535,7 @@ export const APPS = {
     component: 'WalletVaultApp',
     description: 'Store addresses and locally encrypted recovery material.',
     category: 'vault',
+    doctrine: 'signal',
     defaultSize: roomyWindow(1380, 860),
     defaultFrame: { w: 1380, h: 860 },
     iconTone: 'border-cyan-400/25 bg-cyan-500/10 text-cyan-200 shadow-cyan-500/10',
@@ -452,6 +547,7 @@ export const APPS = {
     component: 'ClocksApp',
     description: 'Keep local and global timing visible at a glance.',
     category: 'utility',
+    doctrine: 'operate',
     defaultSize: roomyWindow(1120, 760),
     defaultFrame: { w: 1120, h: 760 },
     iconTone: 'border-fuchsia-400/25 bg-fuchsia-500/10 text-fuchsia-200 shadow-fuchsia-500/10',
@@ -461,8 +557,9 @@ export const APPS = {
     title: 'Midnight Console',
     icon: Binary,
     component: 'TerminalApp',
-    description: 'Local command console with no AI and no network actions.',
+    description: 'Local command console with BPS telemetry, no AI, and no network actions.',
     category: 'utility',
+    doctrine: 'operate',
     defaultSize: roomyWindow(1180, 760),
     defaultFrame: { w: 1180, h: 760 },
     iconTone: 'border-lime-400/25 bg-lime-500/10 text-lime-200 shadow-lime-500/10',
@@ -474,6 +571,7 @@ export const APPS = {
     component: 'SettingsApp',
     description: 'Workspace settings, export/import, and wipe controls.',
     category: 'system',
+    doctrine: 'operate',
     defaultSize: roomyWindow(1320, 840),
     defaultFrame: { w: 1320, h: 840 },
     iconTone: 'border-rose-400/25 bg-rose-500/10 text-rose-200 shadow-rose-500/10',

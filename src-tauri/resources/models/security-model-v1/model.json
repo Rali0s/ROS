@@ -1,0 +1,17 @@
+{
+  "id": "security-model-v1",
+  "displayName": "Security Model v1 / DNS-v1",
+  "friendlyName": "Security Model v1",
+  "technicalName": "DNS-v1",
+  "type": "security",
+  "role": "defensive-review",
+  "runtime": "ollama-compatible",
+  "artifactStatus": "pending",
+  "description": "Placeholder manifest for the first ROS bundled local model. The actual DNS-v1 artifact is not included in this phase.",
+  "capabilities": [
+    "Review risk",
+    "Explain alerts",
+    "Summarize evidence",
+    "Suggest safer next steps"
+  ]
+}

@@ -29,6 +29,7 @@ import {
 import OverviewApp from './components/OverviewApp.jsx';
 import CalendarApp from './components/CalendarApp.jsx';
 import NotesApp from './components/NotesApp.jsx';
+import MusicListApp from './components/MusicListApp.jsx';
 import LibraryManagerApp from './components/LibraryManagerApp.jsx';
 import ResearchVaultApp from './components/ResearchVaultApp.jsx';
 import ProfileOrganizerApp from './components/ProfileOrganizerApp.jsx';
@@ -40,8 +41,11 @@ import BookmarksApp from './components/BookmarksApp.jsx';
 import InventoryApp from './components/InventoryApp.jsx';
 import WalletVaultApp from './components/WalletVaultApp.jsx';
 import ClocksApp from './components/ClocksApp.jsx';
+import BpsEngineApp from './components/BpsEngineApp.jsx';
 import TerminalApp from './components/TerminalApp.jsx';
 import SettingsApp from './components/SettingsApp.jsx';
+import EntrySurface from './components/EntrySurface.jsx';
+import OperatorCockpit, { OrbitMenu } from './components/OperatorCockpit.jsx';
 import {
   lockWorkspace,
   runAutoSnapshotExport,
@@ -62,6 +66,7 @@ const COMPONENT_MAP = {
   OverviewApp,
   CalendarApp,
   NotesApp,
+  MusicListApp,
   LibraryManagerApp,
   ResearchVaultApp,
   ProfileOrganizerApp,
@@ -73,8 +78,15 @@ const COMPONENT_MAP = {
   InventoryApp,
   WalletVaultApp,
   ClocksApp,
+  BpsEngineApp,
   TerminalApp,
   SettingsApp,
+};
+
+const DEFAULT_COCKPIT_STATE = {
+  activeSurface: 'system',
+  activeModuleId: null,
+  previousSurface: null,
 };
 
 const WINDOW_Z_BASE = 20;
@@ -116,214 +128,14 @@ const buildWindow = (app, index, windows = []) => {
   };
 };
 
-const BOOT_DURATION_MS = 8000;
-const BOOT_STEPS = [
-  'Layer-3 Bus',
-  'Citadel Mesh',
-  'Ghost Routing',
-  'Noir Kernel',
-];
-const LUNAR_CYCLE_DAYS = 29.530588;
-const KNOWN_NEW_MOON = new Date('2023-11-13T00:00:00Z');
-const SPIRITS_BY_HOUR = {
-  0: 'Samael',
-  1: 'Anael',
-  2: 'Veguaniel',
-  3: 'Vachmiel',
-  4: 'Sasquiel',
-  5: 'Samiel',
-  6: 'Banyniel',
-  7: 'Osmadiel',
-  8: 'Uvadriel',
-  9: 'Oriel',
-  10: 'Bariel',
-  11: 'Beratiel',
-  12: 'Sabrachon',
-  13: 'Taktis',
-  14: 'Sarquamech',
-  15: 'Jdfischa',
-  16: 'Abasdashon',
-  17: 'Zaazenach',
-  18: 'Mendrion',
-  19: 'Narcriel',
-  20: 'Pamiel',
-  21: 'Iasgnarim',
-  22: 'Dardariel',
-  23: 'Sarandiel',
-};
+const BOOT_DURATION_MS = 1800;
 
-const buildAnsiProgress = (progress) => {
-  const blocks = 12;
-  const filled = Math.round((progress / 100) * blocks);
-  return `${'▓'.repeat(filled)}${'░'.repeat(Math.max(0, blocks - filled))}`;
-};
-
-const getMoonPhaseName = (age) => {
-  if (age < 1.84566) {
-    return 'New';
-  }
-  if (age < 5.53699) {
-    return 'Waxing Crescent';
-  }
-  if (age < 9.22831) {
-    return 'First Quarter';
-  }
-  if (age < 12.91963) {
-    return 'Waxing Gibbous';
-  }
-  if (age < 16.61096) {
-    return 'Full';
-  }
-  if (age < 20.30228) {
-    return 'Waning Gibbous';
-  }
-  if (age < 23.99361) {
-    return 'Last Quarter';
-  }
-  if (age < 27.68493) {
-    return 'Waning Crescent';
-  }
-  return 'New';
-};
-
-const calculateMoonIllumination = (phase) => {
-  if (phase <= LUNAR_CYCLE_DAYS / 2) {
-    return 0.5 * (1 - Math.cos(Math.PI * phase / (LUNAR_CYCLE_DAYS / 2)));
-  }
-
-  return 0.5 * (1 + Math.cos(Math.PI * (phase - LUNAR_CYCLE_DAYS / 2) / (LUNAR_CYCLE_DAYS / 2)));
-};
-
-const getMoonAppearance = (phaseName, hemisphere) => {
-  const appearances = {
-    Northern: {
-      New: 'Mostly invisible',
-      'Waxing Crescent': 'Right side, partially illuminated',
-      'First Quarter': 'Right half illuminated',
-      'Waxing Gibbous': 'Right side, mostly illuminated',
-      Full: 'Fully illuminated',
-      'Waning Gibbous': 'Left side, mostly illuminated',
-      'Last Quarter': 'Left half illuminated',
-      'Waning Crescent': 'Left side, partially illuminated',
-    },
-    Southern: {
-      New: 'Mostly invisible',
-      'Waxing Crescent': 'Left side, partially illuminated',
-      'First Quarter': 'Left half illuminated',
-      'Waxing Gibbous': 'Left side, mostly illuminated',
-      Full: 'Fully illuminated',
-      'Waning Gibbous': 'Right side, mostly illuminated',
-      'Last Quarter': 'Right half illuminated',
-      'Waning Crescent': 'Right side, partially illuminated',
-    },
-  };
-
-  return appearances[hemisphere]?.[phaseName] ?? 'Varies';
-};
-
-const getMoonGlyph = (phaseName) => {
-  switch (phaseName) {
-    case 'New':
-      return '●';
-    case 'Waxing Crescent':
-      return '◔';
-    case 'First Quarter':
-      return '◑';
-    case 'Waxing Gibbous':
-      return '◕';
-    case 'Full':
-      return '○';
-    case 'Waning Gibbous':
-      return '◕';
-    case 'Last Quarter':
-      return '◐';
-    case 'Waning Crescent':
-      return '◓';
-    default:
-      return '●';
-  }
-};
-
-const getMoonPhaseData = (value) => {
-  const phaseDays = (value - KNOWN_NEW_MOON) / (1000 * 60 * 60 * 24);
-  const currentPhase = ((phaseDays % LUNAR_CYCLE_DAYS) + LUNAR_CYCLE_DAYS) % LUNAR_CYCLE_DAYS;
-  const phaseName = getMoonPhaseName(currentPhase);
-  const illumination = Math.round(calculateMoonIllumination(currentPhase) * 100);
-
-  return {
-    phaseName,
-    illumination,
-    glyph: getMoonGlyph(phaseName),
-    northernAppearance: getMoonAppearance(phaseName, 'Northern'),
-    southernAppearance: getMoonAppearance(phaseName, 'Southern'),
-  };
-};
-
-const DesktopSignals = ({ now, lan }) => {
-  const moon = getMoonPhaseData(now);
-  const hour = now.getHours();
-  const spirit = SPIRITS_BY_HOUR[hour] ?? 'Unknown';
-  const timeString = now.toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-
-  return (
-    <div className="pointer-events-none absolute right-4 top-3 z-0 flex w-[17.5rem] flex-col gap-3">
-      <section className="rounded-[22px] border border-cyan-400/12 bg-slate-950/40 p-3.5 shadow-2xl shadow-black/20 backdrop-blur-xl">
-        <div className="text-[11px] uppercase tracking-[0.3em] text-cyan-200">Phased Approach</div>
-        <div className="mt-3 flex items-start justify-between gap-4">
-          <div>
-            <div className="text-2xl font-semibold text-white">{moon.phaseName}</div>
-            <div className="mt-1 text-sm text-slate-300">Illumination {moon.illumination}%</div>
-          </div>
-          <div className="rounded-2xl border border-cyan-300/15 bg-cyan-500/10 px-3.5 py-2 text-[2rem] leading-none text-cyan-100">
-            {moon.glyph}
-          </div>
-        </div>
-        <div className="mt-4 space-y-3 text-xs leading-5 text-slate-400">
-          <div className="rounded-2xl border border-white/8 bg-black/15 px-3 py-3">
-            <div className="uppercase tracking-[0.24em] text-slate-500">Northern Hemisphere</div>
-            <div className="mt-1 text-slate-200">{moon.northernAppearance}</div>
-          </div>
-          <div className="rounded-2xl border border-white/8 bg-black/15 px-3 py-3">
-            <div className="uppercase tracking-[0.24em] text-slate-500">Southern Hemisphere</div>
-            <div className="mt-1 text-slate-200">{moon.southernAppearance}</div>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-[22px] border border-violet-400/12 bg-slate-950/40 p-3.5 shadow-2xl shadow-black/20 backdrop-blur-xl">
-        <div className="text-[11px] uppercase tracking-[0.3em] text-violet-200">Spiritual Clock</div>
-        <div className="mt-3 text-3xl font-semibold text-white">{timeString}</div>
-        <div className="mt-2 text-sm uppercase tracking-[0.22em] text-slate-500">Lemegeton · Ars Paulina</div>
-        <div className="mt-4 rounded-2xl border border-white/8 bg-black/15 px-3 py-3">
-          <div className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Governing Spirit</div>
-          <div className="mt-2 text-lg font-medium text-violet-100">{spirit}</div>
-        </div>
-        <div className="mt-3 rounded-2xl border border-white/8 bg-black/15 px-3 py-3">
-          <div className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Security::Open Ports</div>
-          <div className="mt-2 text-lg font-medium text-white">
-            {lan?.enabled ? `${lan.security?.openPortCount || 0} open` : 'Closed'}
-          </div>
-          <div className="mt-1 text-xs leading-5 text-slate-400">
-            {lan?.enabled
-              ? `${lan.security?.bindScope || 'LAN only'} · ${(lan.security?.openPorts || []).join(' · ')}`
-              : 'F*Society LAN mode disabled'}
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-};
-
-const BootSplash = ({ elapsedMs }) => {
-  const progress = Math.min(100, Math.round((elapsedMs / BOOT_DURATION_MS) * 100));
-  const stageLabel =
-    progress < 34 ? 'INITIALIZING GRID' : progress < 68 ? 'SYNCING GHOST ROUTING' : 'HANDSHAKE READY';
-  const currentStep = BOOT_STEPS[Math.min(BOOT_STEPS.length - 1, Math.floor((progress / 100) * BOOT_STEPS.length))];
-  const progressLabel = `${buildAnsiProgress(progress)} · ${progress}%`;
+const BootSplash = () => {
+  const readinessRows = [
+    ['Vault runtime', 'ready'],
+    ['Interface shell', 'ready'],
+    ['Workspace state', 'locked'],
+  ];
 
   return (
     <div className="relative h-screen overflow-hidden bg-[#03080b] text-slate-100">
@@ -338,11 +150,11 @@ const BootSplash = ({ elapsedMs }) => {
         <section className="boot-splash-card w-full max-w-[40rem] rounded-[32px] border border-cyan-200/14 bg-[linear-gradient(180deg,rgba(3,11,16,0.60),rgba(3,9,14,0.78))] px-6 py-7 shadow-[0_20px_80px_rgba(0,0,0,0.46)] backdrop-blur-[14px] sm:px-8 sm:py-9">
           <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/18 bg-black/18 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.32em] text-cyan-100/88">
             <ScanLine size={12} />
-            Secure Access Node
+            Local encrypted workspace
           </div>
 
           <div className="mt-8">
-            <div className="text-[11px] uppercase tracking-[0.32em] text-amber-200/70">{stageLabel}</div>
+            <div className="text-[11px] uppercase tracking-[0.32em] text-cyan-100/58">Preparing local session</div>
             <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white sm:text-[3.25rem]">
               {BOOT_SPLASH.title}
             </h1>
@@ -352,24 +164,22 @@ const BootSplash = ({ elapsedMs }) => {
           </div>
 
           <div className="mt-10 rounded-[24px] border border-white/8 bg-black/18 px-4 py-4 sm:px-5">
-            <div className="flex items-center justify-between gap-4 text-[11px] uppercase tracking-[0.24em] text-slate-400">
-              <span>{currentStep}</span>
-              <span>{progress}%</span>
+            <div className="text-sm text-slate-300">Preparing local session...</div>
+            <div className="mt-3 h-px overflow-hidden rounded-full bg-white/10">
+              <div className="boot-loading-line h-full w-1/3 rounded-full bg-cyan-100/70" />
             </div>
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/8">
-              <div
-                className="boot-progress-bar h-full rounded-full bg-[linear-gradient(90deg,rgba(251,191,36,0.96),rgba(94,234,212,0.92))]"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <div className="mt-3 text-xs tracking-[0.16em] text-cyan-100/68">
-              {progressLabel}
+            <div className="mt-5 space-y-2">
+              {readinessRows.map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between gap-4 text-xs">
+                  <span className="text-slate-500">{label}</span>
+                  <span className="font-medium text-slate-200">{value}</span>
+                </div>
+              ))}
             </div>
           </div>
 
-          <div className="mt-8 flex items-center justify-between gap-4 text-[11px] uppercase tracking-[0.22em] text-slate-500">
-            <span>Premise::Layer-3 Inc.</span>
-            <span>Credits: Rali0s</span>
+          <div className="mt-8 text-[11px] uppercase tracking-[0.22em] text-slate-500">
+            Local-first • Encrypted at rest • No cloud required
           </div>
         </section>
       </div>
@@ -401,16 +211,34 @@ const LockScreen = ({
       ? 'Migrate Local Workspace'
       : lifecycle === 'locked'
         ? 'Unlock Workspace'
-      : 'Initialize Secure Workspace';
+      : 'Initialize Encrypted Workspace';
 
   const description =
     lifecycle === 'migration'
       ? backend === 'tauri-native'
-        ? 'A browser beta workspace was found. Enter its existing passphrase to migrate it into the native vault, or start a fresh native vault instead.'
+        ? 'A browser workspace was found. Enter its existing passphrase to migrate it into the local encrypted vault, or start a fresh native vault.'
         : 'A legacy local workspace was found. Set a master passphrase to encrypt it in place and keep working.'
       : lifecycle === 'locked'
         ? 'Enter the master passphrase to decrypt the workspace into memory for this session.'
-        : 'Create a master passphrase to seal the workspace locally before ROS starts.';
+        : 'Create a master passphrase to encrypt this workspace locally before ROS starts.';
+  const workspaceStatus =
+    lifecycle === 'migration'
+      ? 'Migration ready'
+      : lifecycle === 'locked'
+        ? 'Locked'
+        : 'First run';
+  const submitLabel =
+    lifecycle === 'migration'
+      ? 'Migrate workspace'
+      : lifecycle === 'locked'
+        ? 'Unlock workspace'
+        : 'Create encrypted workspace';
+  const busyLabel =
+    lifecycle === 'migration'
+      ? 'Migrating workspace...'
+      : lifecycle === 'locked'
+        ? 'Unlocking workspace...'
+        : 'Creating encrypted workspace...';
 
   return (
     <div className="relative flex h-screen items-center justify-center overflow-hidden px-6 py-8">
@@ -434,8 +262,8 @@ const LockScreen = ({
       <div
         className={`absolute inset-0 ${
           midnightOilMode
-            ? 'opacity-8 [background-image:linear-gradient(rgba(255,195,125,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,195,125,0.05)_1px,transparent_1px)]'
-            : 'opacity-12 [background-image:linear-gradient(rgba(170,252,244,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(170,252,244,0.05)_1px,transparent_1px)]'
+            ? 'opacity-[0.055] [background-image:linear-gradient(rgba(255,195,125,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,195,125,0.05)_1px,transparent_1px)]'
+            : 'opacity-[0.075] [background-image:linear-gradient(rgba(170,252,244,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(170,252,244,0.05)_1px,transparent_1px)]'
         } [background-size:72px_72px]`}
       />
       <div
@@ -469,7 +297,7 @@ const LockScreen = ({
             <div className="flex items-center gap-4">
               <img
                 src={BRAND_LOGO}
-                alt="OSA Midnight Oil logo"
+                alt="ROS Bos Taurus logo"
                 className={`h-14 w-14 rounded-2xl bg-black/20 p-2 shadow-lg shadow-black/20 ${
                   midnightOilMode ? 'border border-amber-500/18' : 'border border-cyan-200/18'
                 }`}
@@ -482,21 +310,29 @@ const LockScreen = ({
                 }`}
               >
                 <Shield size={12} />
-                Master-Locked Vault
+                Local encrypted workspace
               </div>
             </div>
-            <h1 className="mt-5 text-[2.1rem] font-semibold tracking-tight text-white">{boot.codename}</h1>
-            <p className={`mt-3 max-w-xl text-sm leading-6 ${midnightOilMode ? 'text-amber-50/76' : 'text-cyan-50/78'}`}>{description}</p>
+            <h1 className="mt-5 text-[2.1rem] font-semibold tracking-tight text-white">OSA-Midnight Oil</h1>
+            <p className={`mt-3 max-w-xl text-sm leading-6 ${midnightOilMode ? 'text-amber-50/76' : 'text-cyan-50/78'}`}>
+              Local encrypted operator workspace.
+            </p>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-400">
+              {description}
+            </p>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <div className={`rounded-2xl bg-black/18 p-4 backdrop-blur-sm ${midnightOilMode ? 'border border-amber-500/10' : 'border border-cyan-200/10'}`}>
-                <div className={`text-[11px] uppercase tracking-[0.24em] ${midnightOilMode ? 'text-amber-100/45' : 'text-cyan-100/45'}`}>Operator</div>
-                <div className="mt-2 text-lg font-semibold text-white">{boot.operator}</div>
-              </div>
-              <div className={`rounded-2xl bg-black/18 p-4 backdrop-blur-sm ${midnightOilMode ? 'border border-amber-500/10' : 'border border-cyan-200/10'}`}>
-                <div className={`text-[11px] uppercase tracking-[0.24em] ${midnightOilMode ? 'text-amber-100/45' : 'text-cyan-100/45'}`}>Storage</div>
-                <div className="mt-2 text-lg font-semibold text-white">Local only</div>
-              </div>
+              {[
+                ['Operator', boot.operator],
+                ['Storage', 'Local only'],
+                ['Workspace', workspaceStatus],
+                ['Network', 'Offline capable'],
+              ].map(([label, value]) => (
+                <div key={label} className={`rounded-2xl bg-black/18 p-4 backdrop-blur-sm ${midnightOilMode ? 'border border-amber-500/10' : 'border border-cyan-200/10'}`}>
+                  <div className={`text-[11px] uppercase tracking-[0.24em] ${midnightOilMode ? 'text-amber-100/45' : 'text-cyan-100/45'}`}>{label}</div>
+                  <div className="mt-2 text-lg font-semibold text-white">{value}</div>
+                </div>
+              ))}
             </div>
 
             <div
@@ -528,7 +364,7 @@ const LockScreen = ({
                 <KeyRound size={18} />
               </span>
               <div>
-                <div className={`text-[11px] uppercase tracking-[0.24em] ${midnightOilMode ? 'text-amber-100/42' : 'text-cyan-100/42'}`}>Vault access</div>
+                <div className={`text-[11px] uppercase tracking-[0.24em] ${midnightOilMode ? 'text-amber-100/42' : 'text-cyan-100/42'}`}>Workspace access</div>
                 <div className="text-2xl font-semibold text-white">{title}</div>
               </div>
             </div>
@@ -547,7 +383,7 @@ const LockScreen = ({
 
             <form onSubmit={onSubmit} className="mt-6 space-y-4">
               <label className="block space-y-2 text-sm text-slate-200">
-                <span className={`text-xs uppercase tracking-[0.24em] ${midnightOilMode ? 'text-amber-100/42' : 'text-cyan-100/42'}`}>Master passphrase</span>
+                <span className={`text-xs uppercase tracking-[0.24em] ${midnightOilMode ? 'text-amber-100/42' : 'text-cyan-100/42'}`}>Master Passphrase</span>
                 <input
                   type="password"
                   value={passphrase}
@@ -563,7 +399,7 @@ const LockScreen = ({
 
               {lifecycle !== 'locked' ? (
                 <label className="block space-y-2 text-sm text-slate-200">
-                  <span className={`text-xs uppercase tracking-[0.24em] ${midnightOilMode ? 'text-amber-100/42' : 'text-cyan-100/42'}`}>Confirm passphrase</span>
+                  <span className={`text-xs uppercase tracking-[0.24em] ${midnightOilMode ? 'text-amber-100/42' : 'text-cyan-100/42'}`}>Confirm Passphrase</span>
                   <input
                   type="password"
                   value={confirmPassphrase}
@@ -586,16 +422,14 @@ const LockScreen = ({
                     ? 'border-amber-400/24 bg-[linear-gradient(90deg,rgba(217,119,6,0.94),rgba(251,191,36,0.98))] shadow-[0_0_24px_rgba(251,191,36,0.12)]'
                     : 'border-cyan-200/20 bg-[linear-gradient(90deg,rgba(91,241,231,0.88),rgba(126,255,247,0.98))] shadow-[0_0_24px_rgba(131,255,240,0.16)]'
                 }`}
-              >
-                <Shield size={16} />
-                {busy
-                  ? 'Working...'
-                  : lifecycle === 'migration'
-                    ? 'Encrypt and migrate'
-                    : lifecycle === 'locked'
-                      ? 'Unlock workspace'
-                      : 'Create secure workspace'}
+                >
+                  <Shield size={16} />
+                {busy ? busyLabel : submitLabel}
               </button>
+
+              <p className="text-xs leading-5 text-slate-500">
+                The passphrase is not stored. Inactivity will lock the workspace again.
+              </p>
 
               {lifecycle === 'migration' && backend === 'tauri-native' && onSkipMigration ? (
                 <button
@@ -662,8 +496,8 @@ const BetaOnboarding = ({ codename, onComplete, onOpenControlRoom }) => (
             Beta support loop
           </div>
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            This release is {APP_RELEASE.channel}. Use the support bundle and feedback surfaces when something feels
-            sharp or unclear.
+            {APP_RELEASE.displayVersion} is live. Use the support bundle and feedback surfaces when something feels
+            sharp, unclear, or worth documenting.
           </p>
         </div>
       </div>
@@ -708,6 +542,8 @@ const App = () => {
   const [windows, setWindows] = useState([]);
   const [activeWindowId, setActiveWindowId] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [entryMode, setEntryMode] = useState(true);
+  const [cockpitState, setCockpitState] = useState(DEFAULT_COCKPIT_STATE);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [time, setTime] = useState(new Date());
   const [passphrase, setPassphrase] = useState('');
@@ -849,16 +685,19 @@ const App = () => {
       setWindows([]);
       setActiveWindowId(null);
       setMenuOpen(false);
+      setEntryMode(true);
+      setCockpitState(DEFAULT_COCKPIT_STATE);
       setGlobalSearchQuery('');
       setAccessError('');
       dragInfo.current.isDragging = false;
       return;
     }
 
-    const startupKey = APPS[data.settings.startupApp] ? data.settings.startupApp : 'overview';
-    setWindows([buildWindow(APPS[startupKey], 0)]);
-    setActiveWindowId(APPS[startupKey].id);
-  }, [session.lifecycle, data.settings.startupApp]);
+    setEntryMode(true);
+    setCockpitState(DEFAULT_COCKPIT_STATE);
+    setWindows([]);
+    setActiveWindowId(null);
+  }, [session.lifecycle]);
 
   useEffect(() => {
     if (session.lifecycle !== 'unlocked' || launchTrackedRef.current) {
@@ -976,7 +815,7 @@ const App = () => {
     );
   };
 
-  const openApp = (appKey) => {
+  const openAppWindow = (appKey) => {
     const app = APPS[appKey];
     if (!app) {
       return;
@@ -999,13 +838,46 @@ const App = () => {
     });
   };
 
+  const openModuleEmbedded = (appKey, previousSurface = 'system') => {
+    const app = APPS[appKey];
+    if (!app) {
+      return;
+    }
+
+    setEntryMode(false);
+    setMenuOpen(false);
+    setWorkspaceNavigation({ appKey });
+    setCockpitState({
+      activeSurface: 'module',
+      activeModuleId: appKey,
+      previousSurface,
+    });
+  };
+
+  const handleBackToSystemSurface = () => {
+    setCockpitState((current) => ({
+      ...current,
+      activeSurface: 'system',
+      previousSurface: 'system',
+    }));
+  };
+
+  const handleCloseActiveModule = () => {
+    setCockpitState(DEFAULT_COCKPIT_STATE);
+  };
+
+  const activeModuleApp = cockpitState.activeModuleId
+    ? { appKey: cockpitState.activeModuleId, ...APPS[cockpitState.activeModuleId] }
+    : null;
+  const ActiveModuleComponent = activeModuleApp?.component ? COMPONENT_MAP[activeModuleApp.component] : null;
+
   const handleSearchSelection = (result) => {
     if (!result?.navigation?.appKey) {
       return;
     }
 
+    openModuleEmbedded(result.navigation.appKey, 'search');
     setWorkspaceNavigation(result.navigation);
-    openApp(result.navigation.appKey);
     setGlobalSearchQuery('');
   };
 
@@ -1183,7 +1055,7 @@ const App = () => {
   };
 
   const openControlRoom = () => {
-    openApp('control-room');
+    openModuleEmbedded('control-room', 'system');
     setWorkspaceNavigation({ appKey: 'control-room' });
   };
 
@@ -1240,14 +1112,23 @@ const App = () => {
           animation: bootCardReveal 0.45s ease-out forwards;
         }
 
-        .boot-progress-bar {
-          transition: width 0.3s ease;
-          box-shadow: 0 0 18px rgba(94, 234, 212, 0.22);
+        @keyframes bootLoadingLine {
+          0% {
+            transform: translateX(-120%);
+          }
+          100% {
+            transform: translateX(320%);
+          }
+        }
+
+        .boot-loading-line {
+          animation: bootLoadingLine 1.15s ease-in-out infinite;
+          box-shadow: 0 0 18px rgba(94, 234, 212, 0.18);
         }
       `}</style>
 
       {!bootComplete ? (
-        <BootSplash elapsedMs={bootElapsedMs} />
+        <BootSplash />
       ) : (
         <div
           className={`flex min-h-screen w-full flex-col overflow-hidden ${shellTheme.bg} text-slate-100`}
@@ -1284,7 +1165,7 @@ const App = () => {
             />
           ) : (
             <>
-            <header className="relative z-10 border-b border-white/5 bg-black/15 px-4 py-3 backdrop-blur">
+            <header className="relative z-10 border-b border-white/8 bg-white/[0.055] px-4 py-3 backdrop-blur-md">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <div className={`text-[11px] uppercase tracking-[0.34em] ${shellTheme.accentText}`}>
@@ -1298,14 +1179,14 @@ const App = () => {
                       Local only
                     </span>
                     <span className="rounded-full border border-violet-400/20 bg-violet-500/10 px-3 py-1 text-xs font-semibold text-violet-100">
-                      {APP_RELEASE.channel}
+                      {APP_RELEASE.displayVersion}
                     </span>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="relative z-[120]">
-                    <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2">
+                    <div className="flex items-center gap-2 rounded-2xl border border-white/12 bg-white/[0.065] px-3 py-2">
                       <Search size={15} className="text-slate-500" />
                       <input
                         value={globalSearchQuery}
@@ -1322,7 +1203,7 @@ const App = () => {
                     </div>
 
                     {globalSearchQuery.trim() ? (
-                      <div className="absolute right-0 top-14 z-[130] w-[28rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-3xl border border-white/10 bg-slate-950/95 shadow-2xl shadow-black/50 backdrop-blur">
+                      <div className="absolute right-0 top-14 z-[130] w-[28rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-3xl border border-white/12 bg-[rgba(24,31,36,0.94)] shadow-2xl shadow-black/25 backdrop-blur-md">
                         {searchGroups.length ? (
                           <div className="max-h-[32rem] overflow-y-auto p-3">
                             {searchGroups.map((group) => (
@@ -1357,7 +1238,7 @@ const App = () => {
                     ) : null}
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-2 text-right">
+                  <div className="rounded-2xl border border-white/12 bg-white/[0.065] px-4 py-2 text-right">
                     <div className="text-sm font-semibold text-white">
                       {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </div>
@@ -1368,27 +1249,35 @@ const App = () => {
             </header>
 
             <main ref={mainRef} className="relative z-0 flex-1 overflow-hidden p-3">
-              <div className="absolute bottom-20 left-3 top-3 z-0 flex w-28 flex-col gap-2.5 overflow-y-auto pr-2 pb-4">
-                {orderedApps.map((app) => {
-                  const Icon = app.icon;
-                  return (
-                    <button
-                      key={app.id}
-                      type="button"
-                      onClick={() => openApp(app.appKey)}
-                      className={`group wireframe-grid rounded-[20px] border border-white/5 bg-black/15 p-2.5 text-left transition ${shellTheme.launcherHover} hover:bg-white/5`}
-                    >
-                      <div className={`mb-2 inline-flex rounded-2xl border p-2.5 shadow-lg shadow-black/30 ${getAppIconTone(app, data.settings.theme)}`}>
-                        <Icon size={18} />
-                      </div>
-                      <div className="text-[13px] font-semibold text-slate-100">{app.title}</div>
-                      <div className="mt-1 text-[11px] leading-4 text-slate-500">{app.category}</div>
-                    </button>
-                  );
-                })}
+              <div className="absolute inset-3 z-0 overflow-hidden rounded-[22px] border border-white/12 bg-[rgba(20,27,32,0.46)] shadow-2xl shadow-black/16 backdrop-blur-sm">
+                {entryMode ? (
+                  <EntrySurface
+                    orderedApps={orderedApps}
+                    data={data}
+                    time={time}
+                    shellTheme={shellTheme}
+                    onOpenModule={(appKey) => openModuleEmbedded(appKey, 'entry')}
+                    onOpenCockpit={() => setEntryMode(false)}
+                  />
+                ) : (
+                  <OperatorCockpit
+                    orderedApps={orderedApps}
+                    cockpitState={cockpitState}
+                    activeModuleApp={activeModuleApp}
+                    ActiveModuleComponent={ActiveModuleComponent}
+                    onOpenModule={(appKey, previousSurface = 'system') =>
+                      openModuleEmbedded(appKey, previousSurface)
+                    }
+                    onOpenModuleWindow={openAppWindow}
+                    onBackToSystemSurface={handleBackToSystemSurface}
+                    onCloseActiveModule={handleCloseActiveModule}
+                    onLockWorkspace={() => handleLockWorkspace('Workspace locked from the command deck.')}
+                    now={time}
+                    lan={data.lan}
+                    windows={windows}
+                  />
+                )}
               </div>
-
-              <DesktopSignals now={time} lan={data.lan} />
 
               {windows.map((windowItem) => {
                 if (windowItem.isMinimized) {
@@ -1409,11 +1298,11 @@ const App = () => {
                       width: windowItem.isMaximized ? '100%' : windowItem.defaultSize.w,
                       height: windowItem.isMaximized ? '100%' : windowItem.defaultSize.h,
                     }}
-                    className={`midnight-animate-in absolute flex flex-col overflow-hidden rounded-[22px] border ${shellTheme.borderStrong} ${shellTheme.windowBg} shadow-2xl shadow-black/40 backdrop-blur`}
+                    className={`midnight-animate-in absolute flex flex-col overflow-hidden rounded-[22px] border ${shellTheme.borderStrong} ${shellTheme.windowBg} shadow-2xl shadow-black/24 backdrop-blur-md`}
                   >
                     <div
                       onMouseDown={(event) => handleMouseDown(event, windowItem.id)}
-                      className="flex h-10 items-center justify-between border-b border-white/10 bg-black/20 px-3.5"
+                      className="flex h-10 items-center justify-between border-b border-white/10 bg-white/[0.055] px-3.5"
                     >
                       <button
                         type="button"
@@ -1454,7 +1343,11 @@ const App = () => {
                       </div>
                     </div>
 
-                    <div className="min-h-0 flex-1 bg-slate-950/40">
+                    <div
+                      className={`min-h-0 flex-1 bg-white/[0.035] ${
+                        data.settings.theme === 'black_glass' ? 'ros-black-glass-app' : ''
+                      }`}
+                    >
                       <WindowComponent />
                     </div>
                   </section>
@@ -1462,17 +1355,26 @@ const App = () => {
               })}
             </main>
 
-            <footer className="relative flex h-14 items-center justify-between border-t border-white/5 bg-black/20 px-3 backdrop-blur">
+            <footer className="relative flex h-14 items-center justify-between border-t border-white/8 bg-white/[0.055] px-3 backdrop-blur-md">
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setMenuOpen((current) => !current)}
+                  onClick={() => {
+                    if (!entryMode) {
+                      setEntryMode(true);
+                      setCockpitState(DEFAULT_COCKPIT_STATE);
+                      setMenuOpen(false);
+                      return;
+                    }
+
+                    setMenuOpen((current) => !current);
+                  }}
                   className={`inline-flex items-center gap-3 rounded-2xl px-3 py-2 transition ${
                     menuOpen ? 'bg-white/10' : 'hover:bg-white/5'
                   }`}
                 >
-                  <span className="inline-flex rounded-xl border border-white/10 bg-black/20 p-1.5 shadow-lg shadow-black/30">
-                    <img src={BRAND_LOGO} alt="OSA Midnight Oil logo" className="h-7 w-7" />
+                  <span className="inline-flex rounded-xl border border-white/12 bg-white/[0.055] p-1.5 shadow-lg shadow-black/16">
+                    <img src={BRAND_LOGO} alt="ROS Bos Taurus logo" className="h-7 w-7" />
                   </span>
                   <div className="text-left">
                     <div className="text-sm font-semibold text-white">{shellTheme.shortName}</div>
@@ -1481,33 +1383,26 @@ const App = () => {
                 </button>
 
                 {menuOpen ? (
-                  <div className="absolute bottom-16 left-3 max-h-[70vh] w-80 overflow-y-auto rounded-3xl border border-white/10 bg-slate-950/95 p-3 shadow-2xl shadow-black/50 backdrop-blur">
-                    <div className="rounded-2xl border border-white/5 bg-black/20 p-4">
+                  <div className="absolute bottom-16 left-3 max-h-[70vh] w-80 overflow-y-auto rounded-3xl border border-white/12 bg-[rgba(24,31,36,0.94)] p-3 shadow-2xl shadow-black/25 backdrop-blur-md">
+                    <div className="rounded-2xl border border-white/8 bg-white/[0.055] p-4">
                       <div className="text-[11px] uppercase tracking-[0.28em] text-slate-500">Operator</div>
                       <div className="mt-1 text-lg font-semibold text-white">{data.settings.operator}</div>
                       <div className="mt-1 text-sm text-slate-400">{data.settings.codename}</div>
                     </div>
 
-                    <div className="mt-3 grid gap-2">
-                      {orderedApps.map((app) => {
-                        const Icon = app.icon;
-                        return (
-                          <button
-                            key={app.id}
-                            type="button"
-                            onClick={() => openApp(app.appKey)}
-                            className="flex items-center gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-white/5"
-                          >
-                            <span className={`wireframe-grid inline-flex rounded-xl border p-2 shadow-lg shadow-black/20 ${getAppIconTone(app, data.settings.theme)}`}>
-                              <Icon size={16} />
-                            </span>
-                            <div>
-                              <div className="text-sm font-semibold text-white">{app.title}</div>
-                              <div className="text-xs text-slate-500">{app.description}</div>
-                            </div>
-                          </button>
-                        );
-                      })}
+                    <div className="mt-3">
+                      <OrbitMenu
+                        data={data}
+                        orderedApps={orderedApps}
+                        onOpenModule={(appKey) => openModuleEmbedded(appKey, 'modules')}
+                        windows={windows}
+                        activeModuleId={cockpitState.activeModuleId}
+                        ollamaStatus={{
+                          status: data.settings.ai?.lastStatus || 'unknown',
+                          model: data.settings.ai?.model || '',
+                        }}
+                        compact
+                      />
                     </div>
 
                     <div className="mt-3 border-t border-white/5 pt-3">
@@ -1539,7 +1434,7 @@ const App = () => {
                       key={windowItem.id}
                       type="button"
                       onClick={() =>
-                        windowItem.isMinimized ? openApp(appKey) : focusWindow(windowItem.id)
+                        windowItem.isMinimized ? openAppWindow(appKey) : focusWindow(windowItem.id)
                       }
                       className={`inline-flex max-w-[180px] items-center gap-2 rounded-2xl px-3 py-2 text-sm transition ${
                         activeWindowId === windowItem.id && !windowItem.isMinimized
@@ -1575,7 +1470,7 @@ const App = () => {
                   Exit
                 </button>
 
-                <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-slate-400">
+                <div className="flex items-center gap-3 rounded-2xl border border-white/12 bg-white/[0.065] px-3 py-2 text-slate-400">
                   <Wifi size={16} />
                   <Volume2 size={16} />
                   <BatteryMedium size={16} />

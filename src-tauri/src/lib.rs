@@ -9,6 +9,7 @@ use secure_core::{
     lock_session, persist_workspace_file, read_vault_state, remove_workspace_file, search_workspace_records,
     unlock_compartment_gate, unlock_workspace_file, migrate_beta_workspace_file, NativeVaultState,
     UnlockedWorkspace, store_file_blob, read_file_blob, delete_file_blob, list_file_blobs,
+    purge_orphaned_lattice_blocks,
     create_comms_identity_in_workspace, rotate_comms_identity_in_workspace, export_identity_card_from_workspace,
     import_peer_card_into_workspace, verify_peer_in_workspace, create_conversation_in_workspace,
     save_comms_draft_in_workspace, send_comms_message_in_workspace, fetch_relay_messages_in_workspace,
@@ -19,6 +20,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::fs;
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use tauri::{LogicalSize, Manager};
 
@@ -179,6 +183,34 @@ struct PurgeOrphanedFileBlobsResponse {
     failed: usize,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PrinterCapabilityResponse {
+    platform: String,
+    printers: Vec<PrinterDescriptorResponse>,
+    warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PrinterDescriptorResponse {
+    name: String,
+    driver: String,
+    status: String,
+    is_default: bool,
+    device_uri: String,
+    options: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SpeakAccessibilityArgs {
+    text: String,
+    enabled: Option<bool>,
+    voice: Option<String>,
+    rate: Option<u16>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SaveTextFileDialogArgs {
@@ -227,6 +259,7 @@ struct ShareLanNoteArgs {
     note_id: String,
     title: String,
     excerpt: String,
+    body: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -653,6 +686,11 @@ fn purge_orphaned_file_blobs_command(args: DeleteFileBlobArgs) -> Result<PurgeOr
         }
     }
 
+    let (removed_block_dirs, failed_block_dirs) =
+        purge_orphaned_lattice_blocks(&linked_blob_ids, mode).map_err(|error| error.to_string())?;
+    removed += removed_block_dirs;
+    failed += failed_block_dirs;
+
     Ok(PurgeOrphanedFileBlobsResponse { removed, failed })
 }
 
@@ -672,6 +710,204 @@ fn list_file_blobs_command() -> Result<Vec<FileBlobDescriptorResponse>, String> 
                 .collect()
         })
         .map_err(|error| error.to_string())
+}
+
+fn command_output(program: &str, args: &[&str]) -> Result<String, String> {
+    let output = Command::new(program)
+        .args(args)
+        .output()
+        .map_err(|error| format!("{program} is unavailable: {error}"))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        let message = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(if message.is_empty() {
+            format!("{program} exited with status {}", output.status)
+        } else {
+            message
+        })
+    }
+}
+
+fn parse_windows_printers(raw: &str) -> Vec<PrinterDescriptorResponse> {
+    let Ok(value) = serde_json::from_str::<Value>(raw) else {
+        return Vec::new();
+    };
+
+    let entries = match value {
+        Value::Array(entries) => entries,
+        Value::Object(_) => vec![value],
+        _ => Vec::new(),
+    };
+
+    entries
+        .into_iter()
+        .map(|entry| PrinterDescriptorResponse {
+            name: entry
+                .get("Name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            driver: entry
+                .get("DriverName")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            status: entry
+                .get("PrinterStatus")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            is_default: entry.get("Default").and_then(Value::as_bool).unwrap_or(false),
+            device_uri: entry
+                .get("PortName")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            options: Vec::new(),
+        })
+        .filter(|entry| !entry.name.is_empty())
+        .collect()
+}
+
+fn list_cups_printers() -> PrinterCapabilityResponse {
+    let platform = std::env::consts::OS.to_string();
+    let mut warnings = Vec::new();
+    let names = match command_output("lpstat", &["-e"]) {
+        Ok(output) => output
+            .lines()
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
+        Err(error) => {
+            warnings.push(error);
+            Vec::new()
+        }
+    };
+    let default_printer = command_output("lpstat", &["-d"])
+        .ok()
+        .and_then(|output| output.split(':').nth(1).map(str::trim).map(ToString::to_string))
+        .unwrap_or_default();
+
+    let printers = names
+        .into_iter()
+        .map(|name| {
+            let device_uri = command_output("lpstat", &["-v", &name])
+                .ok()
+                .and_then(|output| output.split(':').nth(1).map(str::trim).map(ToString::to_string))
+                .unwrap_or_default();
+            let options = command_output("lpoptions", &["-p", &name, "-l"])
+                .map(|output| output.lines().take(32).map(ToString::to_string).collect())
+                .unwrap_or_default();
+
+            PrinterDescriptorResponse {
+                name: name.clone(),
+                driver: String::new(),
+                status: String::new(),
+                is_default: name == default_printer,
+                device_uri,
+                options,
+            }
+        })
+        .collect();
+
+    PrinterCapabilityResponse {
+        platform,
+        printers,
+        warnings,
+    }
+}
+
+#[tauri::command]
+fn list_accessibility_printers() -> Result<PrinterCapabilityResponse, String> {
+    if cfg!(target_os = "windows") {
+        let raw = command_output(
+            "powershell",
+            &[
+                "-NoProfile",
+                "-Command",
+                "Get-Printer | Select-Object Name,DriverName,PrinterStatus,Default,PortName | ConvertTo-Json -Compress",
+            ],
+        )?;
+        return Ok(PrinterCapabilityResponse {
+            platform: "windows".to_string(),
+            printers: parse_windows_printers(&raw),
+            warnings: Vec::new(),
+        });
+    }
+
+    Ok(list_cups_printers())
+}
+
+fn voice_script_candidates(app: &tauri::AppHandle) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        candidates.push(resource_dir.join("accessibility_voice.py"));
+        candidates.push(resource_dir.join("scripts").join("accessibility_voice.py"));
+    }
+
+    if let Ok(current_dir) = std::env::current_dir() {
+        candidates.push(current_dir.join("scripts").join("accessibility_voice.py"));
+        if let Some(parent) = current_dir.parent() {
+            candidates.push(parent.join("scripts").join("accessibility_voice.py"));
+        }
+    }
+
+    candidates
+}
+
+#[tauri::command]
+fn speak_accessibility_prompt(app: tauri::AppHandle, args: SpeakAccessibilityArgs) -> Result<(), String> {
+    if !args.enabled.unwrap_or(false) {
+        return Ok(());
+    }
+
+    let text = args.text.trim();
+    if text.is_empty() {
+        return Ok(());
+    }
+
+    let Some(script_path) = voice_script_candidates(&app).into_iter().find(|path| path.exists()) else {
+        return Err("Local Python voice helper is unavailable.".to_string());
+    };
+
+    let payload = json!({
+        "text": text,
+        "voice": args.voice.unwrap_or_default(),
+        "rate": args.rate.unwrap_or(175),
+    });
+    let python = if cfg!(target_os = "windows") { "python" } else { "python3" };
+    let mut child = Command::new(python)
+        .arg(script_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("Unable to start local Python voice helper: {error}"))?;
+
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin
+            .write_all(payload.to_string().as_bytes())
+            .map_err(|error| format!("Unable to send speech payload: {error}"))?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("Unable to finish local speech request: {error}"))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let message = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(if message.is_empty() {
+            "Local speech request failed.".to_string()
+        } else {
+            message
+        })
+    }
 }
 
 #[tauri::command]
@@ -733,6 +969,7 @@ fn share_lan_note(args: ShareLanNoteArgs) -> Result<lan_party::LanPartyState, St
         note_id: args.note_id,
         title: args.title,
         excerpt: args.excerpt,
+        body: args.body,
     }))
 }
 
@@ -1234,6 +1471,8 @@ pub fn run() {
             delete_file_blob_command,
             purge_orphaned_file_blobs_command,
             list_file_blobs_command,
+            list_accessibility_printers,
+            speak_accessibility_prompt,
             get_lan_party_state,
             set_lan_party_enabled,
             scan_lan_peers,

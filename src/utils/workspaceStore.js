@@ -52,11 +52,38 @@ import {
   storeBrowserVaultBlob,
 } from './fileVault';
 import { createDefaultNostrState } from './nostrDefaults';
+import {
+  createSeededBpsState,
+  deriveBpsState,
+  normalizeBpsAlert,
+  normalizeBpsBaseline,
+  normalizeBpsEntry,
+  normalizeBpsRelationship,
+  normalizeBpsResearchNote,
+  normalizeBpsScore,
+  normalizeBpsSubject,
+} from './bpsEngine';
+import { DEFAULT_MODEL_ID, MODEL_STATUS, createDefaultModelStatus } from './modelCatalog';
 
 const STORAGE_KEY = 'osa-midnight-oil.workspace';
 const CHANGE_EVENT = 'osa-midnight-oil.workspace.change';
 const PERSIST_DEBOUNCE_MS = 260;
 const AUTO_SNAPSHOT_EXPORT_MODES = new Set(['off', 'quit', 'lock-quit']);
+const DEFAULT_PROJECT_ID = 'project-default-operator-memory';
+const MEMORY_ITEM_KINDS = new Set([
+  'note',
+  'file',
+  'command',
+  'ai-output',
+  'research',
+  'security-review',
+  'risk-summary',
+  'model-note',
+  'action-plan',
+  'deepnimsec-record',
+  'training-scenario',
+]);
+const MODEL_STATUS_VALUES = new Set(Object.values(MODEL_STATUS));
 const DEFAULT_COMPARTMENTS = [
   { id: 'notes_vault', label: 'Vault Notes', sensitivity: 'standard' },
   { id: 'identity_vault', label: 'Identity Vault', sensitivity: 'sensitive' },
@@ -93,7 +120,7 @@ const createSettings = () => ({
   codename: PRODUCT_NAME,
   operator: 'Guest Operator',
   theme: 'midnight_oil',
-  wallpaper: 'midnight-oil-state-one',
+  wallpaper: 'bos-taurus',
   startupApp: 'overview',
   autoOpenOverview: true,
   wipePhrase: 'MIDNIGHT',
@@ -112,6 +139,12 @@ const createSettings = () => ({
   sessionDefenseEnabled: false,
   sessionDefenseBlurLock: false,
   sessionDefenseLastWindowAction: 'nuke',
+  accessibilityMode: 'standard',
+  accessibilityPrinterOutputEnabled: false,
+  accessibilityVoiceFeedbackEnabled: false,
+  accessibilityVoiceProvider: 'python-local',
+  accessibilityVoiceName: '',
+  accessibilityVoiceRate: 175,
   fileVaultDeleteMode: 'secure-delete',
   commsRequireVerifiedPeer: false,
   commsAllowClipboard: false,
@@ -137,6 +170,18 @@ const createSettings = () => ({
     feedbackDraftCount: 0,
   },
   snapshotAutoExportMode: 'off',
+  ai: {
+    backend: 'ollama',
+    selectedModelId: DEFAULT_MODEL_ID,
+    modelMode: 'friendly',
+    advancedOpen: false,
+    ollamaBaseUrl: 'http://127.0.0.1:11434',
+    model: '',
+    lastStatus: 'unknown',
+    modelStatuses: {
+      [DEFAULT_MODEL_ID]: createDefaultModelStatus(),
+    },
+  },
 });
 
 const createLanState = () => ({
@@ -322,6 +367,7 @@ const normalizeLanSharedNote = (entry = {}) => ({
   noteId: typeof entry.noteId === 'string' ? entry.noteId : '',
   title: typeof entry.title === 'string' ? entry.title : 'Shared note',
   excerpt: typeof entry.excerpt === 'string' ? entry.excerpt : '',
+  body: typeof entry.body === 'string' ? entry.body : '',
   senderHost: typeof entry.senderHost === 'string' ? entry.senderHost : '',
   createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : now(),
 });
@@ -431,7 +477,11 @@ const base64ToBytes = (value) => {
 };
 
 const createSeededWorkspace = () => ({
-  version: 3,
+  version: 5,
+  projects: [],
+  activeProjectId: DEFAULT_PROJECT_ID,
+  memoryItems: [],
+  aiConversations: [],
   notes: [
     {
       id: createId('note'),
@@ -496,6 +546,28 @@ const createSeededWorkspace = () => ({
       updatedAt: now(),
     },
   ],
+  musicList: [
+    {
+      id: createId('track'),
+      title: 'Midnight Oil',
+      artist: 'Midnight Oil',
+      album: '10, 9, 8, 7, 6, 5, 4, 3, 2, 1',
+      year: '1982',
+      tags: ['rock', 'seed'],
+      notes: 'Seed entry for the simple music list.',
+      updatedAt: now(),
+    },
+    {
+      id: createId('track'),
+      title: 'Red Right Hand',
+      artist: 'Nick Cave & The Bad Seeds',
+      album: 'Let Love In',
+      year: '1994',
+      tags: ['dark', 'seed'],
+      notes: 'Good fit for the ROS atmosphere.',
+      updatedAt: now(),
+    },
+  ],
   inventory: [
     {
       id: createId('asset'),
@@ -530,11 +602,78 @@ const createSeededWorkspace = () => ({
       id: createId('flow'),
       title: 'Remote Ops Network',
       description: 'A wireframe map showing a generic approved access path.',
+      mode: 'general',
       nodes: [
         { id: createId('node'), type: 'workstation', label: 'Operator Workstation', x: 90, y: 110, notes: '' },
         { id: createId('node'), type: 'gateway', label: 'VPN Gateway', x: 360, y: 110, notes: '' },
         { id: createId('node'), type: 'service', label: 'Ticketing Service', x: 640, y: 90, notes: '' },
         { id: createId('node'), type: 'database', label: 'Evidence Store', x: 640, y: 260, notes: '' },
+      ],
+      links: [],
+      updatedAt: now(),
+    },
+    {
+      id: createId('flow'),
+      title: 'Production Server Map',
+      description: 'Guided server topology showing app, proxy, database, and storage relationships.',
+      mode: 'server-map',
+      nodes: [
+        {
+          id: createId('node'),
+          type: 'load-balancer',
+          label: 'Edge Proxy',
+          x: 110,
+          y: 120,
+          address: '10.0.10.12',
+          environment: 'production',
+          os: 'Ubuntu 24.04',
+          service: 'nginx / reverse proxy',
+          owner: 'Platform',
+          zone: 'dmz',
+          notes: 'TLS termination and public ingress.',
+        },
+        {
+          id: createId('node'),
+          type: 'server',
+          label: 'App Server',
+          x: 380,
+          y: 120,
+          address: '10.0.20.14',
+          environment: 'production',
+          os: 'Ubuntu 24.04',
+          service: 'node api',
+          owner: 'Platform',
+          zone: 'app',
+          notes: 'Primary application runtime.',
+        },
+        {
+          id: createId('node'),
+          type: 'database',
+          label: 'Primary DB',
+          x: 670,
+          y: 120,
+          address: '10.0.30.21',
+          environment: 'production',
+          os: 'PostgreSQL appliance',
+          service: 'postgresql',
+          owner: 'Data',
+          zone: 'data',
+          notes: 'Restricted to app tier and admin workstation.',
+        },
+        {
+          id: createId('node'),
+          type: 'storage',
+          label: 'Object Storage',
+          x: 670,
+          y: 300,
+          address: '10.0.40.7',
+          environment: 'production',
+          os: 'Storage appliance',
+          service: 's3-compatible storage',
+          owner: 'Platform',
+          zone: 'storage',
+          notes: 'Backups and uploaded assets.',
+        },
       ],
       links: [],
       updatedAt: now(),
@@ -620,6 +759,7 @@ const createSeededWorkspace = () => ({
     { id: createId('clock'), label: 'London', timezone: 'Europe/London' },
     { id: createId('clock'), label: 'Tokyo', timezone: 'Asia/Tokyo' },
   ],
+  ...createSeededBpsState({ createId, now }),
   settings: createSettings(),
   managedArtifacts: [],
   comms: createCommsState(),
@@ -628,9 +768,14 @@ const createSeededWorkspace = () => ({
 });
 
 const buildEmptyWorkspace = () => ({
-  version: 3,
+  version: 5,
+  projects: [],
+  activeProjectId: DEFAULT_PROJECT_ID,
+  memoryItems: [],
+  aiConversations: [],
   notes: [],
   bookmarks: [],
+  musicList: [],
   inventory: [],
   flowBoards: [],
   calendarEvents: [],
@@ -639,6 +784,13 @@ const buildEmptyWorkspace = () => ({
   profiles: [],
   wallets: [],
   clocks: [],
+  bpsSubjects: [],
+  bpsEntries: [],
+  bpsResearchNotes: [],
+  bpsScores: [],
+  bpsAlerts: [],
+  bpsRelationships: [],
+  bpsBaselines: [],
   settings: createSettings(),
   managedArtifacts: [],
   comms: createCommsState(),
@@ -671,6 +823,17 @@ const normalizeBookmark = (bookmark = {}) => ({
   updatedAt: bookmark.updatedAt || now(),
 });
 
+const normalizeMusicItem = (item = {}) => ({
+  id: item.id || createId('track'),
+  title: typeof item.title === 'string' && item.title.trim() ? item.title : 'Untitled track',
+  artist: typeof item.artist === 'string' ? item.artist : '',
+  album: typeof item.album === 'string' ? item.album : '',
+  year: typeof item.year === 'string' ? item.year : '',
+  tags: Array.isArray(item.tags) ? item.tags.map((tag) => String(tag).trim()).filter(Boolean) : [],
+  notes: typeof item.notes === 'string' ? item.notes : '',
+  updatedAt: item.updatedAt || now(),
+});
+
 const normalizeInventoryItem = (item = {}) => ({
   id: item.id || createId('asset'),
   name: typeof item.name === 'string' && item.name.trim() ? item.name : 'Untitled item',
@@ -687,6 +850,12 @@ const normalizeFlowNode = (node = {}) => ({
   label: typeof node.label === 'string' && node.label.trim() ? node.label : 'Untitled node',
   x: Number.isFinite(node.x) ? node.x : 96,
   y: Number.isFinite(node.y) ? node.y : 96,
+  address: typeof node.address === 'string' ? node.address : '',
+  environment: typeof node.environment === 'string' ? node.environment : '',
+  os: typeof node.os === 'string' ? node.os : '',
+  service: typeof node.service === 'string' ? node.service : '',
+  owner: typeof node.owner === 'string' ? node.owner : '',
+  zone: typeof node.zone === 'string' ? node.zone : '',
   notes: typeof node.notes === 'string' ? node.notes : '',
 });
 
@@ -695,12 +864,17 @@ const normalizeFlowLink = (link = {}) => ({
   from: typeof link.from === 'string' ? link.from : '',
   to: typeof link.to === 'string' ? link.to : '',
   label: typeof link.label === 'string' ? link.label : '',
+  protocol: typeof link.protocol === 'string' ? link.protocol : '',
+  port: typeof link.port === 'string' ? link.port : '',
+  direction: typeof link.direction === 'string' ? link.direction : '',
+  zonePath: typeof link.zonePath === 'string' ? link.zonePath : '',
 });
 
 const normalizeFlowBoard = (board = {}) => ({
   id: board.id || createId('flow'),
   title: typeof board.title === 'string' && board.title.trim() ? board.title : 'Untitled flow board',
   description: typeof board.description === 'string' ? board.description : '',
+  mode: board.mode === 'server-map' ? 'server-map' : 'general',
   nodes: Array.isArray(board.nodes) ? board.nodes.map(normalizeFlowNode) : [],
   links: Array.isArray(board.links) ? board.links.map(normalizeFlowLink) : [],
   updatedAt: board.updatedAt || now(),
@@ -760,6 +934,116 @@ const normalizeStringList = (value) => {
 
   return [];
 };
+
+const createDefaultProject = () => ({
+  id: DEFAULT_PROJECT_ID,
+  name: 'Operator Memory',
+  status: 'active',
+  summary: 'Default local project for legacy notes, research, files, commands, and AI captures.',
+  rootPath: '',
+  tags: ['default', 'local-first'],
+  createdAt: now(),
+  updatedAt: now(),
+});
+
+const normalizeProject = (project = {}) => ({
+  id: typeof project.id === 'string' && project.id.trim() ? project.id : createId('project'),
+  name: typeof project.name === 'string' && project.name.trim() ? project.name : 'Untitled project',
+  status: typeof project.status === 'string' && project.status.trim() ? project.status : 'active',
+  summary: typeof project.summary === 'string' ? project.summary : '',
+  rootPath: typeof project.rootPath === 'string' ? project.rootPath : '',
+  tags: normalizeStringList(project.tags),
+  createdAt: project.createdAt || now(),
+  updatedAt: project.updatedAt || now(),
+});
+
+const normalizeMemoryLink = (link = {}) => {
+  if (typeof link === 'string') {
+    return {
+      id: link,
+      title: link,
+      kind: 'memory',
+    };
+  }
+
+  return {
+    id: typeof link.id === 'string' ? link.id : '',
+    title: typeof link.title === 'string' ? link.title : '',
+    kind: typeof link.kind === 'string' ? link.kind : 'memory',
+  };
+};
+
+const normalizeMemoryItem = (item = {}, fallbackProjectId = DEFAULT_PROJECT_ID) => ({
+  id: item.id || createId('memory'),
+  projectId: typeof item.projectId === 'string' && item.projectId.trim() ? item.projectId : fallbackProjectId,
+  kind: MEMORY_ITEM_KINDS.has(item.kind) ? item.kind : 'note',
+  title: typeof item.title === 'string' && item.title.trim() ? item.title : 'Untitled memory',
+  body: typeof item.body === 'string' ? item.body : '',
+  sourcePath: typeof item.sourcePath === 'string' ? item.sourcePath : '',
+  command: typeof item.command === 'string' ? item.command : '',
+  outputExcerpt: typeof item.outputExcerpt === 'string' ? item.outputExcerpt : '',
+  tags: normalizeStringList(item.tags),
+  links: Array.isArray(item.links) ? item.links.map(normalizeMemoryLink).filter((link) => link.id || link.title) : [],
+  modelId: typeof item.modelId === 'string' ? item.modelId : '',
+  modelName: typeof item.modelName === 'string' ? item.modelName : '',
+  workflowId: typeof item.workflowId === 'string' ? item.workflowId : '',
+  generatedAt: typeof item.generatedAt === 'string' ? item.generatedAt : '',
+  createdAt: item.createdAt || now(),
+  updatedAt: item.updatedAt || now(),
+});
+
+const normalizeModelStatus = (status = {}) => {
+  const next = status && typeof status === 'object' ? status : {};
+
+  return {
+    ...createDefaultModelStatus(),
+    status: MODEL_STATUS_VALUES.has(next.status) ? next.status : MODEL_STATUS.NOT_INSTALLED,
+    installedVersion: typeof next.installedVersion === 'string' ? next.installedVersion : '',
+    lastCheckedAt: typeof next.lastCheckedAt === 'string' ? next.lastCheckedAt : '',
+    lastPreparedAt: typeof next.lastPreparedAt === 'string' ? next.lastPreparedAt : '',
+    lastError: typeof next.lastError === 'string' ? next.lastError : '',
+    rawStatus: typeof next.rawStatus === 'string' ? next.rawStatus : '',
+  };
+};
+
+const normalizeModelStatuses = (statuses = {}) => {
+  const next = statuses && typeof statuses === 'object' ? statuses : {};
+
+  return {
+    ...Object.entries(next).reduce((accumulator, [modelId, status]) => {
+      if (typeof modelId === 'string' && modelId.trim()) {
+        accumulator[modelId] = normalizeModelStatus(status);
+      }
+
+      return accumulator;
+    }, {}),
+    [DEFAULT_MODEL_ID]: normalizeModelStatus(next[DEFAULT_MODEL_ID]),
+  };
+};
+
+const normalizeAiMessage = (message = {}) => ({
+  id: message.id || createId('ai-msg'),
+  role: ['system', 'user', 'assistant'].includes(message.role) ? message.role : 'user',
+  content: typeof message.content === 'string' ? message.content : '',
+  citations: Array.isArray(message.citations) ? message.citations.map(normalizeMemoryLink) : [],
+  createdAt: message.createdAt || now(),
+});
+
+const normalizeAiConversation = (conversation = {}, fallbackProjectId = DEFAULT_PROJECT_ID) => ({
+  id: conversation.id || createId('ai-conversation'),
+  projectId:
+    typeof conversation.projectId === 'string' && conversation.projectId.trim()
+      ? conversation.projectId
+      : fallbackProjectId,
+  backend: conversation.backend === 'ollama' ? 'ollama' : 'ollama',
+  model: typeof conversation.model === 'string' ? conversation.model : '',
+  title: typeof conversation.title === 'string' && conversation.title.trim()
+    ? conversation.title
+    : 'Project memory chat',
+  messages: Array.isArray(conversation.messages) ? conversation.messages.map(normalizeAiMessage) : [],
+  createdAt: conversation.createdAt || now(),
+  updatedAt: conversation.updatedAt || now(),
+});
 
 const normalizeNumberOrNull = (value) => {
   const parsed = Number(value);
@@ -1533,13 +1817,36 @@ const normalizeNostrState = (nostr) => {
 const normalizeWorkspace = (workspace) => {
   const next = workspace && typeof workspace === 'object' ? workspace : {};
   const defaults = DEFAULT_WORKSPACE;
+  const defaultProject = createDefaultProject();
+  const inputProjects = Array.isArray(next.projects) ? next.projects.map(normalizeProject) : [];
+  const projectMap = new Map([[defaultProject.id, defaultProject]]);
 
-  return {
-    version: 3,
+  inputProjects.forEach((project) => {
+    projectMap.set(project.id, project);
+  });
+
+  const projects = [...projectMap.values()];
+  const activeProjectId =
+    typeof next.activeProjectId === 'string' && projectMap.has(next.activeProjectId)
+      ? next.activeProjectId
+      : projects[0]?.id || DEFAULT_PROJECT_ID;
+  const normalizedCore = {
+    version: 5,
+    projects,
+    activeProjectId,
+    memoryItems: Array.isArray(next.memoryItems)
+      ? next.memoryItems.map((item) => normalizeMemoryItem(item, activeProjectId))
+      : [],
+    aiConversations: Array.isArray(next.aiConversations)
+      ? next.aiConversations.map((conversation) => normalizeAiConversation(conversation, activeProjectId))
+      : [],
     notes: ensureReferenceNotes(Array.isArray(next.notes) ? next.notes : defaults.notes),
     bookmarks: Array.isArray(next.bookmarks)
       ? next.bookmarks.map(normalizeBookmark)
       : defaults.bookmarks.map(normalizeBookmark),
+    musicList: Array.isArray(next.musicList)
+      ? next.musicList.map(normalizeMusicItem)
+      : defaults.musicList.map(normalizeMusicItem),
     inventory: Array.isArray(next.inventory)
       ? next.inventory.map(normalizeInventoryItem)
       : defaults.inventory.map(normalizeInventoryItem),
@@ -1554,12 +1861,39 @@ const normalizeWorkspace = (workspace) => {
     profiles: Array.isArray(next.profiles) ? next.profiles.map(normalizeProfile) : [],
     wallets: Array.isArray(next.wallets) ? next.wallets.map(normalizeWallet) : [],
     clocks: Array.isArray(next.clocks) ? next.clocks.map(normalizeClock) : defaults.clocks.map(normalizeClock),
+    bpsSubjects: Array.isArray(next.bpsSubjects)
+      ? next.bpsSubjects.map(normalizeBpsSubject)
+      : defaults.bpsSubjects.map(normalizeBpsSubject),
+    bpsEntries: Array.isArray(next.bpsEntries)
+      ? next.bpsEntries.map(normalizeBpsEntry)
+      : defaults.bpsEntries.map(normalizeBpsEntry),
+    bpsResearchNotes: Array.isArray(next.bpsResearchNotes)
+      ? next.bpsResearchNotes.map(normalizeBpsResearchNote)
+      : defaults.bpsResearchNotes.map(normalizeBpsResearchNote),
+    bpsScores: Array.isArray(next.bpsScores)
+      ? next.bpsScores.map(normalizeBpsScore)
+      : defaults.bpsScores.map(normalizeBpsScore),
+    bpsAlerts: Array.isArray(next.bpsAlerts)
+      ? next.bpsAlerts.map(normalizeBpsAlert)
+      : defaults.bpsAlerts.map(normalizeBpsAlert),
+    bpsRelationships: Array.isArray(next.bpsRelationships)
+      ? next.bpsRelationships.map(normalizeBpsRelationship)
+      : defaults.bpsRelationships.map(normalizeBpsRelationship),
+    bpsBaselines: Array.isArray(next.bpsBaselines)
+      ? next.bpsBaselines.map(normalizeBpsBaseline)
+      : defaults.bpsBaselines.map(normalizeBpsBaseline),
     managedArtifacts: Array.isArray(next.managedArtifacts)
       ? next.managedArtifacts.map(createManagedArtifact)
       : [],
     comms: normalizeCommsState(next.comms),
     nostr: normalizeNostrState(next.nostr),
     lan: normalizeLanState(next.lan),
+  };
+  const derivedBps = deriveBpsState(normalizedCore);
+
+  return {
+    ...normalizedCore,
+    ...derivedBps,
     settings: {
       ...createSettings(),
       ...(next.settings && typeof next.settings === 'object' ? next.settings : {}),
@@ -1568,6 +1902,27 @@ const normalizeWorkspace = (workspace) => {
         ...(next.settings?.betaMetrics && typeof next.settings.betaMetrics === 'object'
           ? next.settings.betaMetrics
           : {}),
+      },
+      ai: {
+        ...createSettings().ai,
+        ...(next.settings?.ai && typeof next.settings.ai === 'object' ? next.settings.ai : {}),
+        backend: 'ollama',
+        selectedModelId:
+          typeof next.settings?.ai?.selectedModelId === 'string' && next.settings.ai.selectedModelId.trim()
+            ? next.settings.ai.selectedModelId
+            : DEFAULT_MODEL_ID,
+        modelMode: next.settings?.ai?.modelMode === 'advanced' ? 'advanced' : 'friendly',
+        advancedOpen: Boolean(next.settings?.ai?.advancedOpen),
+        ollamaBaseUrl:
+          typeof next.settings?.ai?.ollamaBaseUrl === 'string' && next.settings.ai.ollamaBaseUrl.trim()
+            ? next.settings.ai.ollamaBaseUrl
+            : createSettings().ai.ollamaBaseUrl,
+        model: typeof next.settings?.ai?.model === 'string' ? next.settings.ai.model : '',
+        lastStatus:
+          typeof next.settings?.ai?.lastStatus === 'string' && next.settings.ai.lastStatus.trim()
+            ? next.settings.ai.lastStatus
+            : 'unknown',
+        modelStatuses: normalizeModelStatuses(next.settings?.ai?.modelStatuses),
       },
       securityMode: 'master-lock',
       autoLockMinutes:
@@ -1598,6 +1953,23 @@ const normalizeWorkspace = (workspace) => {
       sessionDefenseBlurLock: Boolean(next.settings?.sessionDefenseBlurLock),
       sessionDefenseLastWindowAction:
         next.settings?.sessionDefenseLastWindowAction === 'lock' ? 'lock' : 'nuke',
+      accessibilityMode:
+        next.settings?.accessibilityMode === 'focus'
+          ? 'focus'
+          : next.settings?.accessibilityMode === 'low-vision'
+            ? 'low-vision'
+            : 'standard',
+      accessibilityPrinterOutputEnabled: Boolean(next.settings?.accessibilityPrinterOutputEnabled),
+      accessibilityVoiceFeedbackEnabled: Boolean(next.settings?.accessibilityVoiceFeedbackEnabled),
+      accessibilityVoiceProvider:
+        next.settings?.accessibilityVoiceProvider === 'python-local' ? 'python-local' : 'python-local',
+      accessibilityVoiceName: typeof next.settings?.accessibilityVoiceName === 'string'
+        ? next.settings.accessibilityVoiceName
+        : '',
+      accessibilityVoiceRate:
+        Number.isFinite(next.settings?.accessibilityVoiceRate) && next.settings.accessibilityVoiceRate > 0
+          ? next.settings.accessibilityVoiceRate
+          : 175,
       fileVaultDeleteMode:
         next.settings?.fileVaultDeleteMode === 'standard-delete'
           ? 'standard-delete'
@@ -1704,6 +2076,28 @@ export const searchWorkspaceData = (workspace, rawQuery) => {
       navigation: {
         appKey: 'bookmarks',
         itemId: bookmark.id,
+      },
+    }));
+
+  const musicList = normalized.musicList
+    .filter((item) =>
+      matchQuery(
+        `${item.title} ${item.artist} ${item.album} ${item.year} ${item.tags.join(' ')} ${item.notes}`,
+        query,
+      ),
+    )
+    .slice(0, 8)
+    .map((item) => ({
+      id: item.id,
+      appKey: 'music-list',
+      title: item.title,
+      subtitle: trimExcerpt(
+        [item.artist, item.album, item.year, item.tags.join(' · '), item.notes].filter(Boolean).join(' · '),
+        query,
+      ),
+      navigation: {
+        appKey: 'music-list',
+        itemId: item.id,
       },
     }));
 
@@ -1826,13 +2220,18 @@ export const searchWorkspaceData = (workspace, rawQuery) => {
 
   const flows = normalized.flowBoards
     .flatMap((board) => {
-      const boardMatches = matchQuery(`${board.title} ${board.description}`, query)
+      const boardMatches = matchQuery(`${board.title} ${board.description} ${board.mode}`, query)
         ? [
             {
               id: board.id,
               appKey: 'flow-studio',
               title: board.title,
-              subtitle: trimExcerpt(board.description || 'Flow board', query),
+              subtitle: trimExcerpt(
+                [board.mode === 'server-map' ? 'Server Map' : 'General Flow', board.description || 'Flow board']
+                  .filter(Boolean)
+                  .join(' · '),
+                query,
+              ),
               navigation: {
                 appKey: 'flow-studio',
                 itemId: board.id,
@@ -1842,12 +2241,30 @@ export const searchWorkspaceData = (workspace, rawQuery) => {
         : [];
 
       const nodeMatches = board.nodes
-        .filter((node) => matchQuery(node.label, query))
+        .filter((node) =>
+          matchQuery(
+            [
+              node.label,
+              node.type,
+              node.address,
+              node.environment,
+              node.os,
+              node.service,
+              node.owner,
+              node.zone,
+              node.notes,
+            ].join(' '),
+            query,
+          ),
+        )
         .map((node) => ({
           id: `${board.id}:${node.id}`,
           appKey: 'flow-studio',
           title: `${board.title} · ${node.label}`,
-          subtitle: 'Node label match',
+          subtitle: trimExcerpt(
+            [node.type, node.address, node.service, node.owner, node.zone].filter(Boolean).join(' · '),
+            query,
+          ) || 'Node match',
           navigation: {
             appKey: 'flow-studio',
             itemId: board.id,
@@ -1857,12 +2274,20 @@ export const searchWorkspaceData = (workspace, rawQuery) => {
         }));
 
       const linkMatches = board.links
-        .filter((link) => matchQuery(link.label, query))
+        .filter((link) =>
+          matchQuery(
+            [link.label, link.protocol, link.port, link.direction, link.zonePath].join(' '),
+            query,
+          ),
+        )
         .map((link) => ({
           id: `${board.id}:${link.id}`,
           appKey: 'flow-studio',
           title: `${board.title} · ${link.label}`,
-          subtitle: 'Link label match',
+          subtitle: trimExcerpt(
+            [link.protocol, link.port, link.direction, link.zonePath].filter(Boolean).join(' · '),
+            query,
+          ) || 'Link match',
           navigation: {
             appKey: 'flow-studio',
             itemId: board.id,
@@ -1928,6 +2353,45 @@ export const searchWorkspaceData = (workspace, rawQuery) => {
       navigation: {
         appKey: 'profiles',
         itemId: profile.id,
+      },
+    }));
+
+  const bps = normalized.bpsEntries
+    .filter((entry) =>
+      matchQuery(
+        [
+          entry.title,
+          entry.layer,
+          entry.context,
+          entry.tags.join(' '),
+          entry.notes,
+          JSON.stringify(entry.payload || {}),
+          normalized.bpsSubjects.find((subject) => subject.id === entry.subjectId)?.label || '',
+        ].join(' '),
+        query,
+      ),
+    )
+    .slice(0, 8)
+    .map((entry) => ({
+      id: entry.id,
+      appKey: 'bps-engine',
+      title: entry.title,
+      subtitle: trimExcerpt(
+        [
+          entry.layer.toUpperCase(),
+          normalized.bpsSubjects.find((subject) => subject.id === entry.subjectId)?.label || 'Unknown subject',
+          entry.context,
+          entry.notes,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        query,
+      ),
+      navigation: {
+        appKey: 'bps-engine',
+        itemId: entry.id,
+        subItemId: entry.subjectId,
+        subItemType: 'entry',
       },
     }));
 
@@ -2043,8 +2507,52 @@ export const searchWorkspaceData = (workspace, rawQuery) => {
       },
     }));
 
+  const projectMemory = normalized.memoryItems
+    .filter((item) =>
+      matchQuery(
+        [
+          item.title,
+          item.kind,
+          item.body,
+          item.sourcePath,
+          item.command,
+          item.outputExcerpt,
+          item.tags.join(' '),
+          normalized.projects.find((project) => project.id === item.projectId)?.name || '',
+        ].join(' '),
+        query,
+      ),
+    )
+    .sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt))
+    .slice(0, 10)
+    .map((item) => ({
+      id: item.id,
+      appKey: 'overview',
+      title: item.title,
+      subtitle: trimExcerpt(
+        [
+          item.kind,
+          item.command,
+          item.sourcePath,
+          item.body,
+          item.outputExcerpt,
+          item.tags.join(' · '),
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        query,
+      ),
+      navigation: {
+        appKey: 'overview',
+        itemId: item.id,
+        subItemType: 'memory',
+      },
+    }));
+
   return [
+    { key: 'projectMemory', label: 'Project Memory', results: projectMemory },
     { key: 'notes', label: 'Vault Notes', results: notes },
+    { key: 'music', label: 'Music List', results: musicList },
     { key: 'library', label: 'Library', results: library },
     { key: 'researchVault', label: 'Research Vault', results: researchVault },
     { key: 'calendar', label: 'Calendar', results: calendar },
@@ -2052,11 +2560,333 @@ export const searchWorkspaceData = (workspace, rawQuery) => {
     { key: 'inventory', label: 'Inventory', results: inventory },
     { key: 'flows', label: 'Flow Studio', results: flows },
     { key: 'profiles', label: 'Profile Organizer', results: profiles },
+    { key: 'bps', label: 'BPS Engine', results: bps },
     { key: 'comms', label: 'ROS Comms', results: comms },
     { key: 'lan', label: 'F*Society', results: lan },
     { key: 'nostr', label: 'Nostr Lounge', results: nostr },
     { key: 'wallets', label: 'Wallet Vault', results: wallets },
   ].filter((group) => group.results.length);
+};
+
+const buildSearchExcerpt = (values, query) =>
+  trimExcerpt(values.filter(Boolean).join(' · '), query) || values.filter(Boolean).join(' · ').slice(0, 180);
+
+const scoreProjectResult = (result, query) => {
+  if (!query) {
+    return 1;
+  }
+
+  const loweredTitle = result.title.toLowerCase();
+  const loweredText = `${result.title} ${result.excerpt} ${result.tags?.join(' ') || ''}`.toLowerCase();
+  let score = 0;
+
+  if (loweredTitle === query) {
+    score += 8;
+  }
+
+  if (loweredTitle.includes(query)) {
+    score += 4;
+  }
+
+  if (loweredText.includes(query)) {
+    score += 2;
+  }
+
+  return score;
+};
+
+export const getActiveProject = (workspace) => {
+  const normalized = normalizeWorkspace(workspace);
+  return normalized.projects.find((project) => project.id === normalized.activeProjectId) || normalized.projects[0];
+};
+
+export const getProjectMemoryResults = (workspace, rawQuery = '', options = {}) => {
+  const normalized = normalizeWorkspace(workspace);
+  const query = String(rawQuery || '').trim().toLowerCase();
+  const projectId = options.projectId || normalized.activeProjectId;
+  const includeLegacy = options.includeLegacy !== false;
+  const limit = Number.isFinite(options.limit) ? options.limit : 12;
+  const matchesQuery = (value) => !query || matchQuery(value, query);
+
+  const memoryResults = normalized.memoryItems
+    .filter((item) => item.projectId === projectId)
+    .filter((item) =>
+      matchesQuery(
+        [
+          item.title,
+          item.kind,
+          item.body,
+          item.sourcePath,
+          item.command,
+          item.outputExcerpt,
+          item.tags.join(' '),
+        ].join(' '),
+      ),
+    )
+    .map((item) => ({
+      id: item.id,
+      sourceType: 'memory',
+      projectId: item.projectId,
+      kind: item.kind,
+      title: item.title,
+      body: item.body,
+      command: item.command,
+      sourcePath: item.sourcePath,
+      outputExcerpt: item.outputExcerpt,
+      tags: item.tags,
+      links: item.links,
+      updatedAt: item.updatedAt,
+      citationId: item.id,
+      excerpt: buildSearchExcerpt([item.command, item.sourcePath, item.body, item.outputExcerpt], query),
+      virtual: false,
+    }));
+
+  const legacyResults = includeLegacy
+    ? [
+        ...normalized.notes
+          .filter((note) => matchesQuery(`${note.title} ${note.category} ${note.tags.join(' ')} ${note.body}`))
+          .map((note) => ({
+            id: `legacy-note:${note.id}`,
+            sourceType: 'legacy-note',
+            projectId,
+            kind: 'note',
+            title: note.title,
+            body: note.body,
+            command: '',
+            sourcePath: '',
+            outputExcerpt: '',
+            tags: note.tags,
+            links: [{ id: note.id, title: note.title, kind: 'legacy-note' }],
+            updatedAt: note.updatedAt,
+            citationId: `legacy-note:${note.id}`,
+            excerpt: buildSearchExcerpt([note.category, note.body], query),
+            virtual: true,
+          })),
+        ...normalized.library
+          .filter((entry) =>
+            matchesQuery(
+              [
+                entry.title,
+                entry.fileName,
+                entry.sourcePath,
+                entry.authors.join(' '),
+                entry.tags.join(' '),
+                entry.description,
+              ].join(' '),
+            ),
+          )
+          .map((entry) => ({
+            id: `legacy-library:${entry.id}`,
+            sourceType: 'legacy-library',
+            projectId,
+            kind: 'file',
+            title: entry.title,
+            body: entry.description,
+            command: '',
+            sourcePath: entry.sourcePath || entry.fileName,
+            outputExcerpt: '',
+            tags: entry.tags,
+            links: [{ id: entry.id, title: entry.title, kind: 'legacy-library' }],
+            updatedAt: entry.updatedAt,
+            citationId: `legacy-library:${entry.id}`,
+            excerpt: buildSearchExcerpt([entry.format?.toUpperCase(), entry.sourcePath, entry.description], query),
+            virtual: true,
+          })),
+        ...normalized.researchVault
+          .filter((study) =>
+            matchesQuery(
+              [
+                study.meta.title,
+                study.meta.field,
+                study.meta.subfield,
+                study.meta.keywords.join(' '),
+                study.abstractThesis.coreHypothesis,
+                study.results.findings.join(' '),
+                study.insight.coreInsight,
+              ].join(' '),
+            ),
+          )
+          .map((study) => ({
+            id: `legacy-research:${study.id}`,
+            sourceType: 'legacy-research',
+            projectId,
+            kind: 'research',
+            title: study.meta.title,
+            body: [study.abstractThesis.coreHypothesis, study.insight.coreInsight].filter(Boolean).join('\n\n'),
+            command: '',
+            sourcePath: study.meta.url,
+            outputExcerpt: study.results.findings.join('\n'),
+            tags: [...study.meta.keywords, ...study.cognitiveOverlay.biasTags],
+            links: [{ id: study.id, title: study.meta.title, kind: 'legacy-research' }],
+            updatedAt: study.updatedAt,
+            citationId: `legacy-research:${study.id}`,
+            excerpt: buildSearchExcerpt(
+              [study.meta.field, study.abstractThesis.coreHypothesis, study.insight.coreInsight],
+              query,
+            ),
+            virtual: true,
+          })),
+      ]
+    : [];
+
+  return [...memoryResults, ...legacyResults]
+    .map((result) => ({
+      ...result,
+      score: scoreProjectResult(result, query),
+    }))
+    .filter((result) => !query || result.score > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+
+      return new Date(right.updatedAt || 0) - new Date(left.updatedAt || 0);
+    })
+    .slice(0, limit);
+};
+
+export const buildProjectAiContext = (workspace, prompt, options = {}) =>
+  getProjectMemoryResults(workspace, prompt, {
+    projectId: options.projectId,
+    includeLegacy: true,
+    limit: Number.isFinite(options.limit) ? options.limit : 6,
+  }).map((result) => ({
+    id: result.citationId,
+    title: result.title,
+    kind: result.kind,
+    excerpt: result.excerpt || result.body || result.outputExcerpt,
+    tags: result.tags,
+    sourcePath: result.sourcePath,
+  }));
+
+const toModelContextItem = (result) => ({
+  id: result.citationId || result.id,
+  title: result.title,
+  kind: result.kind,
+  excerpt: result.excerpt || result.body || result.outputExcerpt || result.command || '',
+  tags: result.tags || [],
+  sourcePath: result.sourcePath || '',
+  updatedAt: result.updatedAt || '',
+});
+
+const uniqueModelContextItems = (items) => {
+  const seen = new Set();
+
+  return items.filter((item) => {
+    if (!item.id || seen.has(item.id)) {
+      return false;
+    }
+
+    seen.add(item.id);
+    return true;
+  });
+};
+
+const formatContextSection = (title, items) => [
+  `${title}:`,
+  ...(items.length
+    ? items.map((item, index) => {
+        const excerpt = trimExcerpt([item.excerpt, item.sourcePath].filter(Boolean).join(' · '), '');
+        return `${index + 1}. [${item.id}] ${item.title} (${item.kind})${excerpt ? ` - ${excerpt}` : ''}`;
+      })
+    : ['none']),
+];
+
+export const buildModelRequestContext = (workspace, prompt, options = {}) => {
+  const normalized = normalizeWorkspace(workspace);
+  const projectId = options.projectId || normalized.activeProjectId;
+  const activeProject =
+    normalized.projects.find((project) => project.id === projectId) || normalized.projects[0] || createDefaultProject();
+  const rawTopMemory = getProjectMemoryResults(normalized, prompt, {
+    projectId: activeProject.id,
+    includeLegacy: true,
+    limit: 6,
+  }).map(toModelContextItem);
+  const recentCommands = normalized.memoryItems
+    .filter((item) => item.projectId === activeProject.id && item.kind === 'command')
+    .sort((left, right) => new Date(right.updatedAt || 0) - new Date(left.updatedAt || 0))
+    .slice(0, 5)
+    .map((item) =>
+      toModelContextItem({
+        ...item,
+        citationId: item.id,
+        excerpt: buildSearchExcerpt([item.command, item.outputExcerpt, item.body], ''),
+      }),
+    );
+  const savedResearchMemory = normalized.memoryItems
+    .filter((item) => item.projectId === activeProject.id && item.kind === 'research')
+    .sort((left, right) => new Date(right.updatedAt || 0) - new Date(left.updatedAt || 0))
+    .slice(0, 4)
+    .map((item) =>
+      toModelContextItem({
+        ...item,
+        citationId: item.id,
+        excerpt: buildSearchExcerpt([item.sourcePath, item.body, item.outputExcerpt], ''),
+      }),
+    );
+  const legacyResearch = normalized.researchVault
+    .slice()
+    .sort((left, right) => new Date(right.updatedAt || 0) - new Date(left.updatedAt || 0))
+    .slice(0, 4)
+    .map((study) =>
+      toModelContextItem({
+        id: `legacy-research:${study.id}`,
+        citationId: `legacy-research:${study.id}`,
+        kind: 'research',
+        title: study.meta.title,
+        body: [study.abstractThesis.coreHypothesis, study.insight.coreInsight].filter(Boolean).join('\n\n'),
+        sourcePath: study.meta.url,
+        outputExcerpt: study.results.findings.join('\n'),
+        tags: [...study.meta.keywords, ...study.cognitiveOverlay.biasTags],
+        updatedAt: study.updatedAt,
+        excerpt: buildSearchExcerpt(
+          [study.meta.field, study.abstractThesis.coreHypothesis, study.insight.coreInsight],
+          '',
+        ),
+      }),
+    );
+  const savedResearch = uniqueModelContextItems([...savedResearchMemory, ...legacyResearch]).slice(0, 4);
+  const items = uniqueModelContextItems([...rawTopMemory, ...recentCommands, ...savedResearch]);
+  const citations = items.map((item) => ({
+    id: item.id,
+    title: item.title,
+    kind: item.kind,
+  }));
+  const projectSummary = activeProject.summary || 'No project summary saved yet.';
+  const promptBlock = [
+    'ROS deterministic model context.',
+    `Active project: ${activeProject.name} (${activeProject.id})`,
+    `Project status: ${activeProject.status || 'active'}`,
+    `Project summary: ${projectSummary}`,
+    '',
+    ...formatContextSection('Top project memory', rawTopMemory),
+    '',
+    ...formatContextSection('Recent command captures', recentCommands),
+    '',
+    ...formatContextSection('Saved research records', savedResearch),
+    '',
+    'Citation map:',
+    ...(citations.length
+      ? citations.map((citation) => `- ${citation.id}: ${citation.title} (${citation.kind})`)
+      : ['none']),
+  ].join('\n');
+
+  return {
+    project: {
+      id: activeProject.id,
+      name: activeProject.name,
+      status: activeProject.status,
+      summary: projectSummary,
+    },
+    items,
+    citations,
+    promptBlock,
+    sections: {
+      topMemory: rawTopMemory,
+      recentCommands,
+      savedResearch,
+    },
+  };
 };
 
 let initialized = false;
@@ -2758,6 +3588,109 @@ export const updateWorkspaceData = (updater) => {
   return next;
 };
 
+export const createProject = (projectInput = {}) => {
+  ensureStoreInitialized();
+
+  if (storeState.lifecycle !== 'unlocked') {
+    return null;
+  }
+
+  const project = normalizeProject({
+    ...projectInput,
+    id: projectInput.id || createId('project'),
+    createdAt: projectInput.createdAt || now(),
+    updatedAt: now(),
+  });
+
+  updateWorkspaceData((current) => ({
+    ...current,
+    projects: [project, ...current.projects.filter((entry) => entry.id !== project.id)],
+    activeProjectId: project.id,
+  }));
+
+  return project;
+};
+
+export const setActiveProject = (projectId) => {
+  ensureStoreInitialized();
+
+  if (storeState.lifecycle !== 'unlocked') {
+    return null;
+  }
+
+  const normalized = normalizeWorkspace(storeState.data);
+  const project = normalized.projects.find((entry) => entry.id === projectId);
+
+  if (!project) {
+    return null;
+  }
+
+  updateWorkspaceData((current) => ({
+    ...current,
+    activeProjectId: project.id,
+  }));
+
+  return project;
+};
+
+export const captureMemoryItem = (itemInput = {}) => {
+  ensureStoreInitialized();
+
+  if (storeState.lifecycle !== 'unlocked') {
+    return null;
+  }
+
+  const current = normalizeWorkspace(storeState.data);
+  const item = normalizeMemoryItem(
+    {
+      ...itemInput,
+      id: itemInput.id || createId('memory'),
+      projectId: itemInput.projectId || current.activeProjectId,
+      createdAt: itemInput.createdAt || now(),
+      updatedAt: now(),
+    },
+    current.activeProjectId,
+  );
+
+  updateWorkspaceData((workspace) => ({
+    ...workspace,
+    memoryItems: [item, ...workspace.memoryItems.filter((entry) => entry.id !== item.id)],
+  }));
+
+  return item;
+};
+
+export const upsertAiConversation = (conversationInput = {}) => {
+  ensureStoreInitialized();
+
+  if (storeState.lifecycle !== 'unlocked') {
+    return null;
+  }
+
+  const current = normalizeWorkspace(storeState.data);
+  const conversation = normalizeAiConversation(
+    {
+      ...conversationInput,
+      id: conversationInput.id || createId('ai-conversation'),
+      projectId: conversationInput.projectId || current.activeProjectId,
+      backend: 'ollama',
+      createdAt: conversationInput.createdAt || now(),
+      updatedAt: now(),
+    },
+    current.activeProjectId,
+  );
+
+  updateWorkspaceData((workspace) => ({
+    ...workspace,
+    aiConversations: [
+      conversation,
+      ...workspace.aiConversations.filter((entry) => entry.id !== conversation.id),
+    ],
+  }));
+
+  return conversation;
+};
+
 export const resetWorkspaceData = async () => {
   ensureStoreInitialized();
   const workspace = createDefaultWorkspace();
@@ -3412,6 +4345,7 @@ export const shareLanPartyNote = async ({ noteId }) => {
       noteId,
       title: note.title,
       excerpt: trimExcerpt(note.body, ''),
+      body: note.body,
     }),
     'LAN note handoff sent.',
   );
@@ -3509,6 +4443,13 @@ export const useWorkspaceData = () => {
     data: session.data ?? EMPTY_WORKSPACE,
     session,
     updateWorkspaceData,
+    createProject,
+    setActiveProject,
+    captureMemoryItem,
+    upsertAiConversation,
+    getProjectMemoryResults,
+    buildProjectAiContext,
+    buildModelRequestContext,
     resetWorkspaceData,
     clearWorkspaceData,
     runAutoSnapshotExport,

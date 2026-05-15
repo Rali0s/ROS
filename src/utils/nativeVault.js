@@ -336,6 +336,23 @@ export const purgeNativeOrphanedFileBlobs = async ({ mode = 'secure-delete' } = 
     },
   });
 
+export const listNativeAccessibilityPrinters = async () => invokeNative('list_accessibility_printers');
+
+export const speakNativeAccessibilityPrompt = async ({
+  text,
+  enabled = false,
+  voice = '',
+  rate = 175,
+} = {}) =>
+  invokeNative('speak_accessibility_prompt', {
+    args: {
+      text,
+      enabled,
+      voice,
+      rate,
+    },
+  });
+
 export const syncNativeLanState = async ({ codename, operator } = {}) =>
   invokeNative('get_lan_party_state', {
     args: {
@@ -381,12 +398,13 @@ export const sendNativeLanChat = async ({ content } = {}) =>
     },
   });
 
-export const shareNativeLanNote = async ({ noteId, title, excerpt } = {}) =>
+export const shareNativeLanNote = async ({ noteId, title, excerpt, body } = {}) =>
   invokeNative('share_lan_note', {
     args: {
       noteId,
       title,
       excerpt,
+      body,
     },
   });
 

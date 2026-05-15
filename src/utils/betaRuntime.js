@@ -4,15 +4,16 @@ const INSTALL_ID_KEY = 'osa-midnight-oil.install-id';
 
 export const APP_RELEASE = {
   product: PRODUCT_NAME,
-  version: '1.2.0-beta.1',
-  channel: 'waitlist-beta',
+  version: '0.2',
+  displayVersion: 'Version 0.2',
+  channel: 'local-first-preview',
   cohort: 'invited-beta',
-  releaseDate: '2026-04-19',
+  releaseDate: '2026-04-20',
   releaseNotes: [
-    'Native vault migration and local-first security baseline.',
-    'Backup, recovery, and support surfaces for production beta readiness.',
-    'Trust-center enhancements across Overview, Control Room, and Midnight Console.',
-    'Nostr Lounge beta polish, relay diagnostics, and Wallet Vault identity mirroring.',
+    'Bos Taurus theme refresh with flagship wallpaper and versioned shell treatment.',
+    'BPS Engine module for multi-subject biopsychosocial observation and research-mode notes.',
+    'Deterministic drift scoring, alerts, and local export surfaces for operator analysis.',
+    'Terminal command extensions for BPS status, replay, alerts, and export workflows.',
   ],
 };
 

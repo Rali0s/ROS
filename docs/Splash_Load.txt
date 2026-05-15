@@ -1,0 +1,73 @@
+Footer copy:
+Local-first • Encrypted at rest • No cloud required
+Unlock Screen
+The unlock screen should be the primary security boundary.
+Keep the two-panel black-glass layout.
+Left panel:
+brand
+workspace explanation
+operator/storage/workspace status cards
+Suggested copy:
+OSA-Midnight Oil
+Local encrypted operator workspace.
+
+Your workspace stays encrypted at rest. Unlocking decrypts it into memory for this session only.
+Status cards:
+Operator: Rali0s
+Storage: Local only
+Workspace: Locked
+Network: Offline capable
+Right panel:
+Unlock Workspace
+Master Passphrase
+[ input ]
+
+[ Unlock workspace ]
+
+The passphrase is not stored. Inactivity will lock the workspace again.
+Visual Requirements
+Preserve the existing dark background image treatment.
+Reduce any grid overlay opacity if it competes with the unlock card.
+Keep thin white/gray outlines and subtle cyan/teal accents.
+Keep the glass card look.
+Do not add heavy animation.
+Do not add spinning icons, particles, fake terminal effects, or cinematic transitions.
+Use short fade/opacity transitions only.
+State Behavior
+Use real app state where possible:
+loading
+locked
+unlocking
+unlocked
+error
+first-run/no-workspace
+Expected behavior:
+App starts with short splash.
+Splash resolves to locked unlock screen if workspace is locked.
+User enters passphrase.
+Unlock button shows unlocking state.
+On success, transition to Entry Surface or Operator Memory Cockpit.
+On failure, show a clear passphrase error.
+Do not expose workspace contents until unlocked.
+Acceptance Criteria
+Splash no longer uses fake/gimmicky system text.
+Unlock screen clearly explains local encrypted workspace behavior.
+No fake progress percentage appears.
+Existing unlock functionality remains intact.
+Existing encrypted workspace behavior remains intact.
+Visual style remains premium, dark, and ROS-branded.
+npx eslint src passes.
+npm run build passes.
+
+# My final recommendation
+
+Make the sequence:
+
+```text
+Splash → Unlock Workspace → Doctrine Diamond Entry Surface → Cockpit → Modules
+That gives you:
+serious security boundary
+memorable brand entry
+usable cockpit
+focused modules
+The splash/unlock layer should be the most sober part of the whole app. The doctrine diamond can carry the mythic ROS identity after the workspace is unlocked.

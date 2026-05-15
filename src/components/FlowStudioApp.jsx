@@ -3,6 +3,7 @@ import {
   Cloud,
   Database,
   Download,
+  HardDrive,
   Link2,
   Monitor,
   Plus,
@@ -33,6 +34,21 @@ const NODE_TYPES = {
     icon: Server,
     tone: 'border-violet-400/30 bg-violet-500/10 text-violet-100',
   },
+  server: {
+    label: 'Server',
+    icon: Server,
+    tone: 'border-fuchsia-400/30 bg-fuchsia-500/10 text-fuchsia-100',
+  },
+  'load-balancer': {
+    label: 'Load Balancer',
+    icon: Workflow,
+    tone: 'border-sky-400/30 bg-sky-500/10 text-sky-100',
+  },
+  storage: {
+    label: 'Storage',
+    icon: HardDrive,
+    tone: 'border-lime-400/30 bg-lime-500/10 text-lime-100',
+  },
   database: {
     label: 'Database',
     icon: Database,
@@ -46,6 +62,15 @@ const NODE_TYPES = {
 };
 
 const FLOW_NODE_ORDER = Object.keys(NODE_TYPES);
+const GENERAL_FLOW_NODE_ORDER = ['workstation', 'gateway', 'service', 'database', 'external'];
+const SERVER_MAP_NODE_ORDER = ['server', 'load-balancer', 'gateway', 'database', 'storage', 'external', 'workstation'];
+const SERVER_ENVIRONMENTS = ['production', 'staging', 'development', 'lab'];
+const LINK_PROTOCOLS = ['https', 'http', 'ssh', 'tcp', 'udp', 'postgres', 'mysql', 's3'];
+const LINK_DIRECTIONS = ['bidirectional', 'inbound', 'outbound'];
+const formatLinkDisplay = (link, boardMode) =>
+  boardMode === 'server-map'
+    ? [link.label, link.protocol, link.port ? `:${link.port}` : ''].filter(Boolean).join(' ')
+    : link.label;
 
 const escapeXml = (value) =>
   String(value)
@@ -61,6 +86,12 @@ const createFlowNode = (type, index = 0) => ({
   label: `${NODE_TYPES[type].label} ${index + 1}`,
   x: 96 + (index % 3) * 240,
   y: 96 + Math.floor(index / 3) * 160,
+  address: '',
+  environment: '',
+  os: '',
+  service: '',
+  owner: '',
+  zone: '',
   notes: '',
 });
 
@@ -68,10 +99,52 @@ const createFlowBoard = () => ({
   id: createId('flow'),
   title: 'New Flow Board',
   description: 'Wireframe board for approved network or service flows.',
+  mode: 'general',
   nodes: [
     createFlowNode('workstation', 0),
     createFlowNode('gateway', 1),
     createFlowNode('service', 2),
+  ],
+  links: [],
+  updatedAt: now(),
+});
+
+const createServerMapBoard = () => ({
+  id: createId('flow'),
+  title: 'New Server Map',
+  description: 'Guided map for server topology, service paths, and infrastructure ownership.',
+  mode: 'server-map',
+  nodes: [
+    {
+      ...createFlowNode('load-balancer', 0),
+      label: 'Edge Proxy',
+      address: '10.0.10.12',
+      environment: 'production',
+      os: 'Ubuntu 24.04',
+      service: 'nginx',
+      owner: 'Platform',
+      zone: 'dmz',
+    },
+    {
+      ...createFlowNode('server', 1),
+      label: 'App Server',
+      address: '10.0.20.14',
+      environment: 'production',
+      os: 'Ubuntu 24.04',
+      service: 'node api',
+      owner: 'Platform',
+      zone: 'app',
+    },
+    {
+      ...createFlowNode('database', 2),
+      label: 'Primary DB',
+      address: '10.0.30.21',
+      environment: 'production',
+      os: 'PostgreSQL',
+      service: 'postgres',
+      owner: 'Data',
+      zone: 'data',
+    },
   ],
   links: [],
   updatedAt: now(),
@@ -121,7 +194,7 @@ const serializeBoardSvg = (board) => {
       return `
         <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(226,232,240,0.75)" stroke-width="2" stroke-dasharray="6 4" />
         <rect x="${midX - 102}" y="${midY - 18}" width="204" height="36" rx="18" fill="rgba(2,6,23,0.92)" stroke="rgba(255,255,255,0.14)" />
-        <text x="${midX}" y="${midY + 5}" fill="#e2e8f0" font-size="12" text-anchor="middle" font-family="Segoe UI, sans-serif">${escapeXml(link.label)}</text>
+        <text x="${midX}" y="${midY + 5}" fill="#e2e8f0" font-size="12" text-anchor="middle" font-family="Segoe UI, sans-serif">${escapeXml(formatLinkDisplay(link, board.mode))}</text>
       `;
     })
     .join('');
@@ -135,6 +208,7 @@ const serializeBoardSvg = (board) => {
         <rect x="${node.x + 16}" y="${node.y + 18}" width="34" height="34" rx="12" fill="rgba(99,102,241,0.14)" stroke="rgba(255,255,255,0.16)" />
         <text x="${node.x + 62}" y="${node.y + 32}" fill="#f8fafc" font-size="14" font-weight="600" font-family="Segoe UI, sans-serif">${escapeXml(node.label)}</text>
         <text x="${node.x + 62}" y="${node.y + 52}" fill="#94a3b8" font-size="11" letter-spacing="2" font-family="Segoe UI, sans-serif">${escapeXml(palette.label.toUpperCase())}</text>
+        <text x="${node.x + 62}" y="${node.y + 68}" fill="#94a3b8" font-size="10" font-family="Segoe UI, sans-serif">${escapeXml(node.address || node.service || '')}</text>
       `;
     })
     .join('');
@@ -186,6 +260,7 @@ const FlowStudioApp = () => {
     selectedBoard?.nodes.find((node) => node.id === selectedNodeId) ?? null;
   const selectedLink =
     selectedBoard?.links.find((link) => link.id === selectedLinkId) ?? null;
+  const boardNodeOrder = selectedBoard?.mode === 'server-map' ? SERVER_MAP_NODE_ORDER : GENERAL_FLOW_NODE_ORDER;
 
   useEffect(() => {
     if (session.navigation?.appKey !== 'flow-studio') {
@@ -244,6 +319,21 @@ const FlowStudioApp = () => {
     setSelectedLinkId(null);
     setLinkSourceId(null);
     setStatus('New board created.');
+  };
+
+  const createServerMap = () => {
+    const board = createServerMapBoard();
+
+    updateWorkspaceData((current) => ({
+      ...current,
+      flowBoards: [board, ...current.flowBoards],
+    }));
+
+    setSelectedBoardId(board.id);
+    setSelectedNodeId(board.nodes[0]?.id ?? null);
+    setSelectedLinkId(null);
+    setLinkSourceId(null);
+    setStatus('New server map created.');
   };
 
   const deleteBoard = () => {
@@ -369,6 +459,10 @@ const FlowStudioApp = () => {
         from: linkSourceId,
         to: nodeId,
         label: `${sourceNode?.label ?? 'Source'} → ${targetNode?.label ?? 'Target'}`,
+        protocol: '',
+        port: '',
+        direction: '',
+        zonePath: '',
       };
 
       updateBoard((board) => ({
@@ -554,17 +648,27 @@ const FlowStudioApp = () => {
           Flow Studio
         </div>
         <p className="mt-2 text-sm leading-6 text-slate-400">
-          Wireframe boards for approved network paths, service maps, and architecture handoffs.
+          Guided boards for general workflows, server topology, and service-path mapping.
         </p>
 
-        <button
-          type="button"
-          onClick={createBoard}
-          className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-400"
-        >
-          <Plus size={16} />
-          New board
-        </button>
+        <div className="mt-5 grid gap-2">
+          <button
+            type="button"
+            onClick={createBoard}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-violet-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-400"
+          >
+            <Plus size={16} />
+            New general board
+          </button>
+          <button
+            type="button"
+            onClick={createServerMap}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500/15 px-4 py-2 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/25"
+          >
+            <Server size={16} />
+            New server map
+          </button>
+        </div>
 
         <div className="mt-5">
           <div className="text-xs uppercase tracking-[0.24em] text-slate-500">Boards</div>
@@ -601,7 +705,7 @@ const FlowStudioApp = () => {
         <div className="mt-5">
           <div className="text-xs uppercase tracking-[0.24em] text-slate-500">Stencil</div>
           <div className="mt-3 grid gap-2">
-            {FLOW_NODE_ORDER.map((type) => {
+            {boardNodeOrder.map((type) => {
               const Icon = NODE_TYPES[type].icon;
               return (
                 <button
@@ -632,9 +736,12 @@ const FlowStudioApp = () => {
             <>
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-5 py-4">
                 <div>
-                  <div className="text-xs uppercase tracking-[0.24em] text-slate-500">Active board</div>
-                  <div className="text-lg font-semibold text-white">{selectedBoard.title}</div>
-                </div>
+              <div className="text-xs uppercase tracking-[0.24em] text-slate-500">Active board</div>
+              <div className="text-lg font-semibold text-white">{selectedBoard.title}</div>
+              <div className="mt-1 text-sm text-slate-400">
+                {selectedBoard.mode === 'server-map' ? 'Server Map' : 'General Flow'}
+              </div>
+            </div>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -710,7 +817,7 @@ const FlowStudioApp = () => {
                           }}
                           className="pointer-events-auto flex h-9 w-full items-center justify-center rounded-full border border-white/10 bg-slate-950/85 px-3 text-xs text-slate-200"
                         >
-                          {link.label}
+                          {formatLinkDisplay(link, selectedBoard.mode)}
                         </button>
                       </foreignObject>
                     </g>
@@ -758,6 +865,11 @@ const FlowStudioApp = () => {
                           <div className="mt-1 text-[11px] uppercase tracking-[0.22em] text-slate-500">
                             {NODE_TYPES[node.type].label}
                           </div>
+                          {selectedBoard.mode === 'server-map' ? (
+                            <div className="mt-1 truncate text-[11px] text-slate-500">
+                              {node.address || node.service || node.owner || 'No server metadata'}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </button>
@@ -789,6 +901,34 @@ const FlowStudioApp = () => {
                       }
                       className="mt-3 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none transition focus:border-violet-400/40"
                     />
+                  </div>
+
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.24em] text-slate-500">Board mode</div>
+                    <div className="mt-3 flex gap-2">
+                      {[
+                        ['general', 'General Flow'],
+                        ['server-map', 'Server Map'],
+                      ].map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() =>
+                            updateBoard((board) => ({
+                              ...board,
+                              mode,
+                            }))
+                          }
+                          className={`rounded-xl px-3 py-2 text-sm transition ${
+                            selectedBoard.mode === mode
+                              ? 'bg-violet-500 text-white'
+                              : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div>
@@ -826,6 +966,52 @@ const FlowStudioApp = () => {
                       </option>
                     ))}
                   </select>
+                  {selectedBoard.mode === 'server-map' ? (
+                    <>
+                      <input
+                        value={selectedNode.address}
+                        onChange={(event) => updateNode(selectedNode.id, { address: event.target.value })}
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none transition focus:border-violet-400/40"
+                        placeholder="IP / address"
+                      />
+                      <select
+                        value={selectedNode.environment}
+                        onChange={(event) => updateNode(selectedNode.id, { environment: event.target.value })}
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-slate-100 outline-none transition focus:border-violet-400/40"
+                      >
+                        <option value="">Environment</option>
+                        {SERVER_ENVIRONMENTS.map((environment) => (
+                          <option key={environment} value={environment}>
+                            {environment}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        value={selectedNode.os}
+                        onChange={(event) => updateNode(selectedNode.id, { os: event.target.value })}
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none transition focus:border-violet-400/40"
+                        placeholder="Operating system"
+                      />
+                      <input
+                        value={selectedNode.service}
+                        onChange={(event) => updateNode(selectedNode.id, { service: event.target.value })}
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none transition focus:border-violet-400/40"
+                        placeholder="Service / stack"
+                      />
+                      <input
+                        value={selectedNode.owner}
+                        onChange={(event) => updateNode(selectedNode.id, { owner: event.target.value })}
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none transition focus:border-violet-400/40"
+                        placeholder="Owner"
+                      />
+                      <input
+                        value={selectedNode.zone}
+                        onChange={(event) => updateNode(selectedNode.id, { zone: event.target.value })}
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none transition focus:border-violet-400/40"
+                        placeholder="Trust zone"
+                      />
+                    </>
+                  ) : null}
                   <textarea
                     value={selectedNode.notes}
                     onChange={(event) => updateNode(selectedNode.id, { notes: event.target.value })}
@@ -861,6 +1047,46 @@ const FlowStudioApp = () => {
                     onChange={(event) => updateLink(selectedLink.id, { label: event.target.value })}
                     className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none transition focus:border-violet-400/40"
                   />
+                  {selectedBoard.mode === 'server-map' ? (
+                    <>
+                      <select
+                        value={selectedLink.protocol}
+                        onChange={(event) => updateLink(selectedLink.id, { protocol: event.target.value })}
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-slate-100 outline-none transition focus:border-violet-400/40"
+                      >
+                        <option value="">Protocol</option>
+                        {LINK_PROTOCOLS.map((protocol) => (
+                          <option key={protocol} value={protocol}>
+                            {protocol}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        value={selectedLink.port}
+                        onChange={(event) => updateLink(selectedLink.id, { port: event.target.value })}
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none transition focus:border-violet-400/40"
+                        placeholder="Port"
+                      />
+                      <select
+                        value={selectedLink.direction}
+                        onChange={(event) => updateLink(selectedLink.id, { direction: event.target.value })}
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-slate-100 outline-none transition focus:border-violet-400/40"
+                      >
+                        <option value="">Direction</option>
+                        {LINK_DIRECTIONS.map((direction) => (
+                          <option key={direction} value={direction}>
+                            {direction}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        value={selectedLink.zonePath}
+                        onChange={(event) => updateLink(selectedLink.id, { zonePath: event.target.value })}
+                        className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none transition focus:border-violet-400/40"
+                        placeholder="Trust zone / environment path"
+                      />
+                    </>
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => deleteLink(selectedLink.id)}

@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    io::{Seek, SeekFrom, Write},
+    io::{Cursor, Seek, SeekFrom, Write},
     path::PathBuf,
 };
 use thiserror::Error;
@@ -30,6 +30,10 @@ const CONTAINER_VERSION: u32 = 1;
 const ROOT_KEY_LENGTH: usize = 32;
 const SALT_LENGTH: usize = 16;
 const NONCE_LENGTH: usize = 24;
+const QUAD_LATTICE_STORAGE_MODE: &str = "quad-lattice-v1";
+const QUAD_LATTICE_BLOCK_SIZE: usize = 256 * 1024;
+const QUAD_LATTICE_LANES: usize = 4;
+const QUAD_LATTICE_COMPRESSION: &str = "zstd";
 const KEYRING_SERVICE: &str = "osa-midnight-oil";
 const NOSTR_KEYRING_PREFIX: &str = "nostr-secret";
 const COMMS_PROTOCOL_VERSION: &str = "ros-comms.v0.1";
@@ -165,6 +169,41 @@ struct NativeFileBlobContainer {
     payload: Option<EncryptedBlob>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QuadLatticeFileManifest {
+    kind: String,
+    version: u32,
+    blob_id: String,
+    mime_type: String,
+    stored_at: String,
+    size_bytes: u64,
+    compressed_size_bytes: u64,
+    storage_mode: String,
+    compression: String,
+    block_size: u64,
+    lanes: u8,
+    root_salt: String,
+    wrapped_key: EncryptedBlob,
+    cells: Vec<QuadLatticeCell>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QuadLatticeCell {
+    index: u64,
+    lanes: Vec<QuadLatticeLane>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QuadLatticeLane {
+    lane: String,
+    block_id: String,
+    compressed_size: u64,
+    encrypted_size: u64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeFileBlobDescriptor {
@@ -275,6 +314,12 @@ pub fn delete_nostr_secret_key(pubkey: &str) -> Result<(), SecureCoreError> {
 }
 
 fn app_dir() -> Result<PathBuf, SecureCoreError> {
+    if let Ok(path) = std::env::var("OSA_MIDNIGHT_OIL_DATA_DIR") {
+        if !path.trim().is_empty() {
+            return Ok(PathBuf::from(path));
+        }
+    }
+
     let base = data_local_dir()
         .or_else(config_local_dir)
         .ok_or_else(|| SecureCoreError::Io("no local app data directory available".to_string()))?;
@@ -328,6 +373,62 @@ fn decrypt_bytes(key_bytes: &[u8], blob: &EncryptedBlob) -> Result<Vec<u8>, Secu
     cipher
         .decrypt(nonce, ciphertext.as_ref())
         .map_err(|_| SecureCoreError::InvalidPassphrase)
+}
+
+fn derive_lattice_material(
+    file_key: &[u8],
+    blob_id: &str,
+    cell_index: u64,
+    lane: &str,
+) -> Result<([u8; ROOT_KEY_LENGTH], [u8; NONCE_LENGTH]), SecureCoreError> {
+    let hk = Hkdf::<Sha256>::new(Some(QUAD_LATTICE_STORAGE_MODE.as_bytes()), file_key);
+    let info = format!("{blob_id}:{cell_index}:{lane}");
+    let mut material = [0_u8; ROOT_KEY_LENGTH + NONCE_LENGTH];
+    hk.expand(info.as_bytes(), &mut material)
+        .map_err(|_| SecureCoreError::Crypto)?;
+
+    let mut key = [0_u8; ROOT_KEY_LENGTH];
+    let mut nonce = [0_u8; NONCE_LENGTH];
+    key.copy_from_slice(&material[..ROOT_KEY_LENGTH]);
+    nonce.copy_from_slice(&material[ROOT_KEY_LENGTH..]);
+    material.zeroize();
+    Ok((key, nonce))
+}
+
+fn encrypt_lattice_block(
+    file_key: &[u8],
+    blob_id: &str,
+    cell_index: u64,
+    lane: &str,
+    plaintext: &[u8],
+) -> Result<Vec<u8>, SecureCoreError> {
+    let (mut key_bytes, mut nonce_bytes) = derive_lattice_material(file_key, blob_id, cell_index, lane)?;
+    let key = Key::from_slice(&key_bytes);
+    let nonce = XNonce::from_slice(&nonce_bytes);
+    let cipher = XChaCha20Poly1305::new(key);
+    let ciphertext = cipher.encrypt(nonce, plaintext).map_err(|_| SecureCoreError::Crypto)?;
+    key_bytes.zeroize();
+    nonce_bytes.zeroize();
+    Ok(ciphertext)
+}
+
+fn decrypt_lattice_block(
+    file_key: &[u8],
+    blob_id: &str,
+    cell_index: u64,
+    lane: &str,
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, SecureCoreError> {
+    let (mut key_bytes, mut nonce_bytes) = derive_lattice_material(file_key, blob_id, cell_index, lane)?;
+    let key = Key::from_slice(&key_bytes);
+    let nonce = XNonce::from_slice(&nonce_bytes);
+    let cipher = XChaCha20Poly1305::new(key);
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|_| SecureCoreError::InvalidPassphrase)?;
+    key_bytes.zeroize();
+    nonce_bytes.zeroize();
+    Ok(plaintext)
 }
 
 fn derive_root_key(passphrase: &str, salt: &[u8]) -> Result<[u8; ROOT_KEY_LENGTH], SecureCoreError> {
@@ -910,7 +1011,7 @@ pub fn initialize_workspace_file(
 pub fn unlock_workspace_file(passphrase: &str) -> Result<UnlockedWorkspace, SecureCoreError> {
     let container = read_container()?;
     let workspace = unseal_container(&container, passphrase)?;
-    Ok(UnlockedWorkspace {
+    let unlocked = UnlockedWorkspace {
         workspace,
         passphrase: passphrase.to_string(),
         unlocked_compartments: list_compartment_defs()
@@ -918,7 +1019,9 @@ pub fn unlock_workspace_file(passphrase: &str) -> Result<UnlockedWorkspace, Secu
             .filter(|definition| definition.sensitivity == "standard")
             .map(|definition| definition.id.to_string())
             .collect(),
-    })
+    };
+    let _ = migrate_legacy_file_blobs(&unlocked);
+    Ok(unlocked)
 }
 
 pub fn lock_session(session: &mut Option<UnlockedWorkspace>) {
@@ -967,12 +1070,128 @@ pub fn remove_workspace_file() -> Result<(), SecureCoreError> {
     Ok(())
 }
 
-fn file_blob_path(blob_id: &str) -> Result<PathBuf, SecureCoreError> {
+fn safe_blob_name(blob_id: &str) -> String {
+    blob_id
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric() || *character == '-' || *character == '_')
+        .collect::<String>()
+}
+
+fn safe_block_name(block_id: &str) -> String {
+    block_id
+        .chars()
+        .filter(|character| {
+            character.is_ascii_alphanumeric() || *character == '-' || *character == '_' || *character == '.'
+        })
+        .collect::<String>()
+}
+
+fn legacy_file_blob_path(blob_id: &str) -> Result<PathBuf, SecureCoreError> {
     let safe_name = blob_id
         .chars()
         .filter(|character| character.is_ascii_alphanumeric() || *character == '-' || *character == '_')
         .collect::<String>();
     Ok(file_vault_dir()?.join(format!("{safe_name}.blob.json")))
+}
+
+fn lattice_manifest_path(blob_id: &str) -> Result<PathBuf, SecureCoreError> {
+    Ok(file_vault_dir()?.join(format!("{}.manifest.json", safe_blob_name(blob_id))))
+}
+
+fn lattice_blocks_root() -> Result<PathBuf, SecureCoreError> {
+    Ok(file_vault_dir()?.join("blocks"))
+}
+
+fn lattice_blob_blocks_dir(blob_id: &str) -> Result<PathBuf, SecureCoreError> {
+    Ok(lattice_blocks_root()?.join(safe_blob_name(blob_id)))
+}
+
+fn lattice_block_path(blob_id: &str, block_id: &str) -> Result<PathBuf, SecureCoreError> {
+    Ok(lattice_blob_blocks_dir(blob_id)?.join(safe_block_name(block_id)))
+}
+
+fn lane_label(index: usize) -> Result<&'static str, SecureCoreError> {
+    match index {
+        0 => Ok("a"),
+        1 => Ok("b"),
+        2 => Ok("c"),
+        3 => Ok("d"),
+        _ => Err(SecureCoreError::InvalidContainer),
+    }
+}
+
+fn store_lattice_file_blob(
+    session: &UnlockedWorkspace,
+    blob_id: &str,
+    mime_type: &str,
+    payload_bytes: &[u8],
+) -> Result<(), SecureCoreError> {
+    let vault_dir = file_vault_dir()?;
+    fs::create_dir_all(&vault_dir).map_err(|error| SecureCoreError::Io(error.to_string()))?;
+    let blocks_dir = lattice_blob_blocks_dir(blob_id)?;
+    if blocks_dir.exists() {
+        fs::remove_dir_all(&blocks_dir).map_err(|error| SecureCoreError::Io(error.to_string()))?;
+    }
+    fs::create_dir_all(&blocks_dir).map_err(|error| SecureCoreError::Io(error.to_string()))?;
+
+    let compressed = zstd::stream::encode_all(Cursor::new(payload_bytes), 3)
+        .map_err(|error| SecureCoreError::Io(error.to_string()))?;
+    let root_salt = random_bytes::<SALT_LENGTH>();
+    let mut root_key = derive_root_key(&session.passphrase, &root_salt)?;
+    let mut file_key = random_bytes::<ROOT_KEY_LENGTH>();
+    let wrapped_key = encrypt_bytes(&root_key, &file_key)?;
+    root_key.zeroize();
+
+    let mut cells: Vec<QuadLatticeCell> = Vec::new();
+
+    for (block_index, chunk) in compressed.chunks(QUAD_LATTICE_BLOCK_SIZE).enumerate() {
+        let cell_index = (block_index / QUAD_LATTICE_LANES) as u64;
+        let lane_index = block_index % QUAD_LATTICE_LANES;
+        let lane = lane_label(lane_index)?;
+        let ciphertext = encrypt_lattice_block(&file_key, blob_id, cell_index, lane, chunk)?;
+        let block_id = format!("cell-{cell_index:016x}-{lane}.qblk");
+        fs::write(lattice_block_path(blob_id, &block_id)?, &ciphertext)
+            .map_err(|error| SecureCoreError::Io(error.to_string()))?;
+
+        if cells.last().map(|cell| cell.index) != Some(cell_index) {
+            cells.push(QuadLatticeCell {
+                index: cell_index,
+                lanes: Vec::new(),
+            });
+        }
+
+        if let Some(cell) = cells.last_mut() {
+            cell.lanes.push(QuadLatticeLane {
+                lane: lane.to_string(),
+                block_id,
+                compressed_size: chunk.len() as u64,
+                encrypted_size: ciphertext.len() as u64,
+            });
+        }
+    }
+
+    file_key.zeroize();
+
+    let manifest = QuadLatticeFileManifest {
+        kind: FILE_BLOB_KIND.to_string(),
+        version: CONTAINER_VERSION,
+        blob_id: blob_id.to_string(),
+        mime_type: mime_type.to_string(),
+        stored_at: timestamp(),
+        size_bytes: payload_bytes.len() as u64,
+        compressed_size_bytes: compressed.len() as u64,
+        storage_mode: QUAD_LATTICE_STORAGE_MODE.to_string(),
+        compression: QUAD_LATTICE_COMPRESSION.to_string(),
+        block_size: QUAD_LATTICE_BLOCK_SIZE as u64,
+        lanes: QUAD_LATTICE_LANES as u8,
+        root_salt: BASE64.encode(root_salt),
+        wrapped_key,
+        cells,
+    };
+
+    let serialized =
+        serde_json::to_string_pretty(&manifest).map_err(|error| SecureCoreError::Serde(error.to_string()))?;
+    fs::write(lattice_manifest_path(blob_id)?, serialized).map_err(|error| SecureCoreError::Io(error.to_string()))
 }
 
 pub fn store_file_blob(
@@ -981,33 +1200,12 @@ pub fn store_file_blob(
     mime_type: &str,
     payload_bytes: &[u8],
 ) -> Result<(), SecureCoreError> {
-    let vault_dir = file_vault_dir()?;
-    fs::create_dir_all(&vault_dir).map_err(|error| SecureCoreError::Io(error.to_string()))?;
-    let mut root_key = derive_root_key(&session.passphrase, &[0x33; SALT_LENGTH])?;
-    let file_key = random_bytes::<ROOT_KEY_LENGTH>();
-    let wrapped_key = encrypt_bytes(&root_key, &file_key)?;
-    let payload = encrypt_bytes(&file_key, payload_bytes)?;
-    root_key.zeroize();
-
-    let container = NativeFileBlobContainer {
-        kind: FILE_BLOB_KIND.to_string(),
-        version: CONTAINER_VERSION,
-        mime_type: mime_type.to_string(),
-        stored_at: timestamp(),
-        size_bytes: Some(payload_bytes.len() as u64),
-        storage_mode: Some("wrapped-file-key".to_string()),
-        wrapped_key: Some(wrapped_key),
-        payload: Some(payload),
-    };
-
-    let serialized =
-        serde_json::to_string_pretty(&container).map_err(|error| SecureCoreError::Serde(error.to_string()))?;
-    fs::write(file_blob_path(blob_id)?, serialized).map_err(|error| SecureCoreError::Io(error.to_string()))
+    store_lattice_file_blob(session, blob_id, mime_type, payload_bytes)
 }
 
-pub fn read_file_blob(session: &UnlockedWorkspace, blob_id: &str) -> Result<(String, String), SecureCoreError> {
+fn read_legacy_file_blob(session: &UnlockedWorkspace, blob_id: &str) -> Result<(String, Vec<u8>), SecureCoreError> {
     let content =
-        fs::read_to_string(file_blob_path(blob_id)?).map_err(|error| SecureCoreError::Io(error.to_string()))?;
+        fs::read_to_string(legacy_file_blob_path(blob_id)?).map_err(|error| SecureCoreError::Io(error.to_string()))?;
     let container: NativeFileBlobContainer =
         serde_json::from_str(&content).map_err(|error| SecureCoreError::Serde(error.to_string()))?;
 
@@ -1028,7 +1226,67 @@ pub fn read_file_blob(session: &UnlockedWorkspace, blob_id: &str) -> Result<(Str
     };
     root_key.zeroize();
 
-    Ok((container.mime_type, BASE64.encode(bytes)))
+    Ok((container.mime_type, bytes))
+}
+
+fn read_lattice_file_blob(session: &UnlockedWorkspace, blob_id: &str) -> Result<(String, Vec<u8>), SecureCoreError> {
+    let content =
+        fs::read_to_string(lattice_manifest_path(blob_id)?).map_err(|error| SecureCoreError::Io(error.to_string()))?;
+    let manifest: QuadLatticeFileManifest =
+        serde_json::from_str(&content).map_err(|error| SecureCoreError::Serde(error.to_string()))?;
+
+    if manifest.kind != FILE_BLOB_KIND || manifest.storage_mode != QUAD_LATTICE_STORAGE_MODE {
+        return Err(SecureCoreError::InvalidContainer);
+    }
+
+    let salt = BASE64
+        .decode(&manifest.root_salt)
+        .map_err(|_| SecureCoreError::InvalidContainer)?;
+    let mut root_key = derive_root_key(&session.passphrase, &salt)?;
+    let mut file_key = decrypt_bytes(&root_key, &manifest.wrapped_key)?;
+    root_key.zeroize();
+
+    let mut compressed = Vec::with_capacity(manifest.compressed_size_bytes as usize);
+
+    for cell in &manifest.cells {
+        for lane in &cell.lanes {
+            let ciphertext = fs::read(lattice_block_path(blob_id, &lane.block_id)?)
+                .map_err(|error| SecureCoreError::Io(error.to_string()))?;
+            let plaintext = decrypt_lattice_block(&file_key, blob_id, cell.index, &lane.lane, &ciphertext)?;
+
+            if plaintext.len() as u64 != lane.compressed_size {
+                file_key.zeroize();
+                return Err(SecureCoreError::InvalidContainer);
+            }
+
+            compressed.extend_from_slice(&plaintext);
+        }
+    }
+
+    file_key.zeroize();
+
+    if compressed.len() as u64 != manifest.compressed_size_bytes {
+        return Err(SecureCoreError::InvalidContainer);
+    }
+
+    let bytes = zstd::stream::decode_all(Cursor::new(compressed))
+        .map_err(|error| SecureCoreError::Io(error.to_string()))?;
+
+    if bytes.len() as u64 != manifest.size_bytes {
+        return Err(SecureCoreError::InvalidContainer);
+    }
+
+    Ok((manifest.mime_type, bytes))
+}
+
+pub fn read_file_blob(session: &UnlockedWorkspace, blob_id: &str) -> Result<(String, String), SecureCoreError> {
+    let (mime_type, bytes) = if lattice_manifest_path(blob_id)?.exists() {
+        read_lattice_file_blob(session, blob_id)?
+    } else {
+        read_legacy_file_blob(session, blob_id)?
+    };
+
+    Ok((mime_type, BASE64.encode(bytes)))
 }
 
 fn crypto_shred_blob_file(path: &PathBuf) -> Result<u64, SecureCoreError> {
@@ -1103,24 +1361,71 @@ fn best_effort_overwrite_file(path: &PathBuf, target_size: u64) -> Result<(), Se
 }
 
 pub fn delete_file_blob(blob_id: &str, mode: &str) -> Result<(), SecureCoreError> {
-    let path = file_blob_path(blob_id)?;
+    let manifest_path = lattice_manifest_path(blob_id)?;
+    let legacy_path = legacy_file_blob_path(blob_id)?;
 
-    if !path.exists() {
+    if manifest_path.exists() {
+        let content =
+            fs::read_to_string(&manifest_path).map_err(|error| SecureCoreError::Io(error.to_string()))?;
+        let manifest: QuadLatticeFileManifest =
+            serde_json::from_str(&content).map_err(|error| SecureCoreError::Serde(error.to_string()))?;
+
+        match mode {
+            "secure-delete" => {
+                let _ = crypto_shred_blob_file(&manifest_path)?;
+            }
+            "best-effort-overwrite" => {
+                let target_size = crypto_shred_blob_file(&manifest_path)?;
+                best_effort_overwrite_file(&manifest_path, target_size)?;
+            }
+            _ => {}
+        }
+
+        let _ = fs::remove_file(&manifest_path);
+
+        for cell in &manifest.cells {
+            for lane in &cell.lanes {
+                let path = lattice_block_path(blob_id, &lane.block_id)?;
+
+                if !path.exists() {
+                    continue;
+                }
+
+                if mode == "best-effort-overwrite" {
+                    let target_size = fs::metadata(&path)
+                        .map(|metadata| metadata.len())
+                        .unwrap_or(lane.encrypted_size);
+                    best_effort_overwrite_file(&path, target_size)?;
+                }
+
+                fs::remove_file(path).map_err(|error| SecureCoreError::Io(error.to_string()))?;
+            }
+        }
+
+        let block_dir = lattice_blob_blocks_dir(blob_id)?;
+        if block_dir.exists() {
+            let _ = fs::remove_dir(&block_dir);
+        }
+
+        return Ok(());
+    }
+
+    if !legacy_path.exists() {
         return Ok(());
     }
 
     match mode {
         "secure-delete" => {
-            let _ = crypto_shred_blob_file(&path)?;
+            let _ = crypto_shred_blob_file(&legacy_path)?;
         }
         "best-effort-overwrite" => {
-            let target_size = crypto_shred_blob_file(&path)?;
-            best_effort_overwrite_file(&path, target_size)?;
+            let target_size = crypto_shred_blob_file(&legacy_path)?;
+            best_effort_overwrite_file(&legacy_path, target_size)?;
         }
         _ => {}
     }
 
-    fs::remove_file(path).map_err(|error| SecureCoreError::Io(error.to_string()))?;
+    fs::remove_file(legacy_path).map_err(|error| SecureCoreError::Io(error.to_string()))?;
     Ok(())
 }
 
@@ -1141,6 +1446,20 @@ pub fn list_file_blobs() -> Result<Vec<NativeFileBlobDescriptor>, SecureCoreErro
         }
 
         let content = fs::read_to_string(&path).map_err(|error| SecureCoreError::Io(error.to_string()))?;
+
+        if let Ok(manifest) = serde_json::from_str::<QuadLatticeFileManifest>(&content) {
+            if manifest.kind == FILE_BLOB_KIND && manifest.storage_mode == QUAD_LATTICE_STORAGE_MODE {
+                entries.push(NativeFileBlobDescriptor {
+                    blob_id: manifest.blob_id,
+                    mime_type: manifest.mime_type,
+                    stored_at: manifest.stored_at,
+                    size_bytes: manifest.size_bytes,
+                    storage_mode: manifest.storage_mode,
+                });
+            }
+            continue;
+        }
+
         let container: NativeFileBlobContainer =
             serde_json::from_str(&content).map_err(|error| SecureCoreError::Serde(error.to_string()))?;
 
@@ -1170,6 +1489,133 @@ pub fn list_file_blobs() -> Result<Vec<NativeFileBlobDescriptor>, SecureCoreErro
 
     entries.sort_by(|left, right| right.stored_at.cmp(&left.stored_at));
     Ok(entries)
+}
+
+pub fn migrate_legacy_file_blobs(session: &UnlockedWorkspace) -> Result<usize, SecureCoreError> {
+    let vault_dir = file_vault_dir()?;
+    if !vault_dir.exists() {
+      return Ok(0);
+    }
+
+    let mut migrated = 0_usize;
+
+    for item in fs::read_dir(vault_dir).map_err(|error| SecureCoreError::Io(error.to_string()))? {
+        let item = item.map_err(|error| SecureCoreError::Io(error.to_string()))?;
+        let path = item.path();
+
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+
+        let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+
+        if !file_name.ends_with(".blob.json") {
+            continue;
+        }
+
+        let blob_id = file_name.trim_end_matches(".blob.json").to_string();
+
+        if lattice_manifest_path(&blob_id)?.exists() {
+            let _ = fs::remove_file(&path);
+            continue;
+        }
+
+        let (mime_type, bytes) = read_legacy_file_blob(session, &blob_id)?;
+        store_lattice_file_blob(session, &blob_id, &mime_type, &bytes)?;
+
+        if lattice_manifest_path(&blob_id)?.exists() {
+            fs::remove_file(&path).map_err(|error| SecureCoreError::Io(error.to_string()))?;
+            migrated += 1;
+        }
+    }
+
+    Ok(migrated)
+}
+
+pub fn purge_orphaned_lattice_blocks(
+    linked_blob_ids: &HashSet<String>,
+    mode: &str,
+) -> Result<(usize, usize), SecureCoreError> {
+    let blocks_root = lattice_blocks_root()?;
+    if !blocks_root.exists() {
+        return Ok((0, 0));
+    }
+
+    let mut live_block_dirs: HashSet<String> = linked_blob_ids
+        .iter()
+        .map(|blob_id| safe_blob_name(blob_id))
+        .collect();
+    let vault_dir = file_vault_dir()?;
+
+    if vault_dir.exists() {
+        for item in fs::read_dir(&vault_dir).map_err(|error| SecureCoreError::Io(error.to_string()))? {
+            let item = item.map_err(|error| SecureCoreError::Io(error.to_string()))?;
+            let path = item.path();
+
+            let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
+                continue;
+            };
+
+            if file_name.ends_with(".manifest.json") {
+                live_block_dirs.insert(file_name.trim_end_matches(".manifest.json").to_string());
+            }
+        }
+    }
+
+    let mut removed = 0_usize;
+    let mut failed = 0_usize;
+
+    for item in fs::read_dir(blocks_root).map_err(|error| SecureCoreError::Io(error.to_string()))? {
+        let item = item.map_err(|error| SecureCoreError::Io(error.to_string()))?;
+        let path = item.path();
+
+        if !path.is_dir() {
+            continue;
+        }
+
+        let Some(dir_name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+
+        if live_block_dirs.contains(dir_name) {
+            continue;
+        }
+
+        let result = if mode == "best-effort-overwrite" {
+            overwrite_lattice_dir(&path).and_then(|_| {
+                fs::remove_dir_all(&path).map_err(|error| SecureCoreError::Io(error.to_string()))
+            })
+        } else {
+            fs::remove_dir_all(&path).map_err(|error| SecureCoreError::Io(error.to_string()))
+        };
+
+        match result {
+            Ok(_) => removed += 1,
+            Err(_) => failed += 1,
+        }
+    }
+
+    Ok((removed, failed))
+}
+
+fn overwrite_lattice_dir(path: &PathBuf) -> Result<(), SecureCoreError> {
+    for item in fs::read_dir(path).map_err(|error| SecureCoreError::Io(error.to_string()))? {
+        let item = item.map_err(|error| SecureCoreError::Io(error.to_string()))?;
+        let block_path = item.path();
+
+        if !block_path.is_file() {
+            continue;
+        }
+
+        let target_size = fs::metadata(&block_path)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0);
+        best_effort_overwrite_file(&block_path, target_size)?;
+    }
+
+    Ok(())
 }
 
 fn ensure_comms_object(workspace: &mut Map<String, Value>) -> &mut Map<String, Value> {
@@ -2093,4 +2539,91 @@ pub fn delete_record_from_workspace(
 
     object.insert(list_key.to_string(), Value::Array(records));
     Ok(Value::Object(object))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn deterministic_bytes(len: usize) -> Vec<u8> {
+        let mut state = 0x1234_5678_9abc_def0_u64;
+        let mut bytes = Vec::with_capacity(len);
+
+        while bytes.len() < len {
+            state ^= state << 7;
+            state ^= state >> 9;
+            state ^= state << 8;
+            bytes.extend_from_slice(&state.to_le_bytes());
+        }
+
+        bytes.truncate(len);
+        bytes
+    }
+
+    fn test_session(temp: &tempfile::TempDir) -> UnlockedWorkspace {
+        std::env::set_var("OSA_MIDNIGHT_OIL_DATA_DIR", temp.path().join("vault"));
+        initialize_workspace_file("correct horse battery staple", json!({ "operator": "Test" }), None)
+            .expect("workspace should initialize")
+    }
+
+    #[test]
+    fn quad_lattice_round_trips_partial_and_many_cells() {
+        let _guard = TEST_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let session = test_session(&temp);
+        let sizes = [
+            0,
+            1,
+            QUAD_LATTICE_BLOCK_SIZE - 31,
+            QUAD_LATTICE_BLOCK_SIZE + 31,
+            (QUAD_LATTICE_BLOCK_SIZE * 3) + 17,
+            (QUAD_LATTICE_BLOCK_SIZE * 4) + 19,
+            (QUAD_LATTICE_BLOCK_SIZE * 5) + 23,
+            (QUAD_LATTICE_BLOCK_SIZE * 9) + 29,
+        ];
+
+        for (index, size) in sizes.into_iter().enumerate() {
+            let blob_id = format!("blob-{index}");
+            let bytes = deterministic_bytes(size);
+            store_file_blob(&session, &blob_id, "application/octet-stream", &bytes)
+                .expect("blob should store");
+
+            let (mime_type, payload_base64) = read_file_blob(&session, &blob_id).expect("blob should read");
+            let decoded = BASE64.decode(payload_base64).expect("payload should decode");
+
+            assert_eq!(mime_type, "application/octet-stream");
+            assert_eq!(decoded, bytes);
+        }
+
+        let entries = list_file_blobs().expect("blobs should list");
+        assert!(entries.iter().all(|entry| entry.storage_mode == QUAD_LATTICE_STORAGE_MODE));
+        std::env::remove_var("OSA_MIDNIGHT_OIL_DATA_DIR");
+    }
+
+    #[test]
+    fn quad_lattice_rejects_corrupted_lane() {
+        let _guard = TEST_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let session = test_session(&temp);
+        let blob_id = "corrupt-me";
+        let bytes = deterministic_bytes(QUAD_LATTICE_BLOCK_SIZE + 113);
+        store_file_blob(&session, blob_id, "application/octet-stream", &bytes).expect("blob should store");
+
+        let block_dir = lattice_blob_blocks_dir(blob_id).expect("block dir should resolve");
+        let first_block = fs::read_dir(block_dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|path| path.extension().and_then(|value| value.to_str()) == Some("qblk"))
+            .expect("block should exist");
+        let mut block_bytes = fs::read(&first_block).expect("block should read");
+        block_bytes[0] ^= 0xA5;
+        fs::write(&first_block, block_bytes).expect("block should be corrupted");
+
+        assert!(read_file_blob(&session, blob_id).is_err());
+        std::env::remove_var("OSA_MIDNIGHT_OIL_DATA_DIR");
+    }
 }

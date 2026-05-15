@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { getAccountStatus, getReleaseStatus, getWorkspaceHealth } from '../utils/betaRuntime';
+import { formatBpsCommandResponse } from '../utils/bpsEngine';
 import { createId, now, useWorkspaceData } from '../utils/workspaceStore';
 
-const PROMPT = 'operator@midnight:~$';
+const PROMPT = 'operator@bos-taurus:~$';
 
 const TerminalApp = () => {
   const { data, session, searchWorkspace, updateWorkspaceData } = useWorkspaceData();
   const [history, setHistory] = useState([
-    'OSA Midnight Console v2.0',
+    'ROS Midnight Console :: Bos Taurus / BPS Engine',
     'Type help for commands. This console never calls AI or remote services.',
     '',
   ]);
@@ -27,7 +28,7 @@ const TerminalApp = () => {
         return [];
       case 'help':
         return [
-          'Commands: help, clear, whoami, date, stats, notes, recent, library, calendar, bookmarks, inventory, profiles, comms, lan, ports, flows, wallets, clocks, policy, apps, find, health, beta, release, backup, capture',
+          'Commands: help, clear, whoami, date, stats, notes, recent, library, calendar, bookmarks, inventory, profiles, comms, lan, ports, flows, wallets, clocks, policy, apps, find, health, beta, release, backup, capture, bps.status, bps.log, bps.bias, bps.map, bps.replay, bps.alerts, bps.research, bps.export',
         ];
       case 'clear':
         setHistory([]);
@@ -44,6 +45,8 @@ const TerminalApp = () => {
           `bookmarks=${data.bookmarks.length}`,
           `inventory=${data.inventory.length}`,
           `profiles=${data.profiles.length}`,
+          `bpsSubjects=${data.bpsSubjects.length}`,
+          `bpsEntries=${data.bpsEntries.length}`,
           `comms=${data.comms.conversations.length}`,
           `flows=${data.flowBoards.length}`,
           `wallets=${data.wallets.length}`,
@@ -138,6 +141,7 @@ const TerminalApp = () => {
       case 'apps':
         return [
           '- Overview',
+          '- BPS Engine',
           '- Library',
           '- Calendar',
           '- Vault Notes',
@@ -178,11 +182,22 @@ const TerminalApp = () => {
       case 'release': {
         const releaseStatus = getReleaseStatus(session);
         return [
-          `${releaseStatus.product} ${releaseStatus.version}`,
+          `${releaseStatus.product} ${releaseStatus.displayVersion}`,
           `channel=${releaseStatus.channel}`,
           `runtime=${releaseStatus.runtime}`,
           ...releaseStatus.releaseNotes.map((note) => `- ${note}`),
         ];
+      }
+      case 'bps.status':
+      case 'bps.log':
+      case 'bps.bias':
+      case 'bps.map':
+      case 'bps.replay':
+      case 'bps.alerts':
+      case 'bps.research':
+      case 'bps.export': {
+        const response = formatBpsCommandResponse(data, rawCommand);
+        return response.length ? response : ['No BPS response generated.'];
       }
       case 'backup':
         return [

@@ -241,9 +241,9 @@ const OverviewApp = () => {
             </div>
             <div className="mt-3 space-y-3">
               <div className={`rounded-[18px] border ${theme.panelMutedBorder} ${theme.panelMutedBg} px-3 py-3`}>
-                <div className="text-xs uppercase tracking-[0.22em] text-slate-500">Release channel</div>
-                <div className="mt-1.5 text-lg font-semibold text-white">{releaseStatus.channel}</div>
-                <div className="mt-1 text-xs text-slate-500">{releaseStatus.version} · {releaseStatus.runtime}</div>
+                <div className="text-xs uppercase tracking-[0.22em] text-slate-500">Release signal</div>
+                <div className="mt-1.5 text-lg font-semibold text-white">{releaseStatus.displayVersion}</div>
+                <div className="mt-1 text-xs text-slate-500">{releaseStatus.channel} · {releaseStatus.runtime}</div>
               </div>
               <div className={`rounded-[18px] border ${theme.panelMutedBorder} ${theme.panelMutedBg} px-3 py-3`}>
                 <div className="text-xs uppercase tracking-[0.22em] text-slate-500">Waitlist source</div>

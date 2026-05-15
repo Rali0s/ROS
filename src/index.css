@@ -1,4 +1,4 @@
-/* OSA Midnight Oil - Tailwind Base Theme */
+/* ROS Bos Taurus - Tailwind Base Theme */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -86,4 +86,122 @@ body[data-native-desktop='true'] .ansi-terminal {
 
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out;
+}
+
+.ros-black-glass-app {
+  color: #e2e8f0;
+  background:
+    radial-gradient(circle at top, rgba(203, 213, 225, 0.1), transparent 34%),
+    linear-gradient(180deg, rgba(21, 28, 34, 0.88), rgba(14, 19, 24, 0.94));
+}
+
+.ros-black-glass-app [class*="bg-slate-950"],
+.ros-black-glass-app [class*="bg-slate-900"],
+.ros-black-glass-app [class*="bg-[#"],
+.ros-black-glass-app [class*="bg-[linear-gradient"] {
+  background: rgba(24, 31, 36, 0.58) !important;
+  backdrop-filter: blur(8px);
+}
+
+.ros-black-glass-app [class*="bg-black/"],
+.ros-black-glass-app [class*="bg-white/5"],
+.ros-black-glass-app [class*="bg-white/[0."] {
+  background-color: rgba(255, 255, 255, 0.055) !important;
+}
+
+.ros-black-glass-app [class*="bg-amber"],
+.ros-black-glass-app [class*="bg-orange"],
+.ros-black-glass-app [class*="bg-violet"],
+.ros-black-glass-app [class*="bg-indigo"],
+.ros-black-glass-app [class*="bg-cyan"],
+.ros-black-glass-app [class*="bg-sky"],
+.ros-black-glass-app [class*="bg-teal"],
+.ros-black-glass-app [class*="bg-emerald"],
+.ros-black-glass-app [class*="bg-lime"],
+.ros-black-glass-app [class*="bg-fuchsia"],
+.ros-black-glass-app [class*="bg-pink"] {
+  background-color: rgba(255, 255, 255, 0.075) !important;
+}
+
+.ros-black-glass-app button[class*="bg-amber-500"],
+.ros-black-glass-app button[class*="bg-orange-500"],
+.ros-black-glass-app button[class*="bg-violet-500"],
+.ros-black-glass-app button[class*="bg-indigo-500"],
+.ros-black-glass-app button[class*="bg-cyan-400"],
+.ros-black-glass-app button[class*="bg-cyan-500"],
+.ros-black-glass-app button[class*="bg-sky-500"],
+.ros-black-glass-app button[class*="bg-teal-500"],
+.ros-black-glass-app button[class*="bg-emerald-500"],
+.ros-black-glass-app button[class*="bg-lime-500"] {
+  background: rgba(241, 245, 249, 0.92) !important;
+  color: #020405 !important;
+}
+
+.ros-black-glass-app button[class*="bg-amber-500"]:hover,
+.ros-black-glass-app button[class*="bg-orange-500"]:hover,
+.ros-black-glass-app button[class*="bg-violet-500"]:hover,
+.ros-black-glass-app button[class*="bg-indigo-500"]:hover,
+.ros-black-glass-app button[class*="bg-cyan-400"]:hover,
+.ros-black-glass-app button[class*="bg-cyan-500"]:hover,
+.ros-black-glass-app button[class*="bg-sky-500"]:hover,
+.ros-black-glass-app button[class*="bg-teal-500"]:hover,
+.ros-black-glass-app button[class*="bg-emerald-500"]:hover,
+.ros-black-glass-app button[class*="bg-lime-500"]:hover {
+  background: #fff !important;
+}
+
+.ros-black-glass-app [class*="border-amber"],
+.ros-black-glass-app [class*="border-orange"],
+.ros-black-glass-app [class*="border-violet"],
+.ros-black-glass-app [class*="border-indigo"],
+.ros-black-glass-app [class*="border-cyan"],
+.ros-black-glass-app [class*="border-sky"],
+.ros-black-glass-app [class*="border-teal"],
+.ros-black-glass-app [class*="border-emerald"],
+.ros-black-glass-app [class*="border-lime"],
+.ros-black-glass-app [class*="border-fuchsia"],
+.ros-black-glass-app [class*="border-pink"],
+.ros-black-glass-app [class*="border-white"] {
+  border-color: rgba(255, 255, 255, 0.13) !important;
+}
+
+.ros-black-glass-app [class*="text-amber"],
+.ros-black-glass-app [class*="text-orange"],
+.ros-black-glass-app [class*="text-violet"],
+.ros-black-glass-app [class*="text-indigo"],
+.ros-black-glass-app [class*="text-cyan"],
+.ros-black-glass-app [class*="text-sky"],
+.ros-black-glass-app [class*="text-teal"],
+.ros-black-glass-app [class*="text-emerald"],
+.ros-black-glass-app [class*="text-lime"],
+.ros-black-glass-app [class*="text-fuchsia"],
+.ros-black-glass-app [class*="text-pink"] {
+  color: rgba(207, 250, 254, 0.86) !important;
+}
+
+.ros-black-glass-app input,
+.ros-black-glass-app textarea,
+.ros-black-glass-app select {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.13) !important;
+  color: #e2e8f0 !important;
+}
+
+.ros-black-glass-app input:focus,
+.ros-black-glass-app textarea:focus,
+.ros-black-glass-app select:focus {
+  border-color: rgba(207, 250, 254, 0.34) !important;
+  box-shadow: 0 0 0 1px rgba(207, 250, 254, 0.08), 0 0 24px rgba(103, 232, 249, 0.08) !important;
+}
+
+.ros-black-glass-app table,
+.ros-black-glass-app thead,
+.ros-black-glass-app tbody,
+.ros-black-glass-app tr {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.ros-black-glass-app ::selection {
+  background: rgba(207, 250, 254, 0.24);
+  color: #fff;
 }
