@@ -1426,6 +1426,30 @@ fn exit_app(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn start_ollama_service() -> Result<Value, String> {
+    if command_output("ollama", &["ps"]).is_ok() {
+        return Ok(json!({
+            "status": "running",
+            "started": false
+        }));
+    }
+
+    let child = Command::new("ollama")
+        .arg("serve")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("Unable to start Ollama with `ollama serve`: {error}"))?;
+
+    Ok(json!({
+        "status": "starting",
+        "started": true,
+        "pid": child.id()
+    }))
+}
+
 fn fit_main_window<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
     let Some(window) = app.get_webview_window("main") else {
         return Ok(());
@@ -1507,6 +1531,7 @@ pub fn run() {
             delete_attachment_ref,
             nuke_workspace,
             exit_app,
+            start_ollama_service,
             store_file_blob_command,
             read_file_blob_command,
             delete_file_blob_command,

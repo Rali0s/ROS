@@ -44,6 +44,7 @@ import ClocksApp from './components/ClocksApp.jsx';
 import BpsEngineApp from './components/BpsEngineApp.jsx';
 import TerminalApp from './components/TerminalApp.jsx';
 import SettingsApp from './components/SettingsApp.jsx';
+import BlackFalconConnectorApp from './components/BlackFalconConnectorApp.jsx';
 import EntrySurface from './components/EntrySurface.jsx';
 import OperatorCockpit, { OrbitMenu } from './components/OperatorCockpit.jsx';
 import {
@@ -83,6 +84,7 @@ const COMPONENT_MAP = {
   BpsEngineApp,
   TerminalApp,
   SettingsApp,
+  BlackFalconConnectorApp,
 };
 
 const DEFAULT_COCKPIT_STATE = {

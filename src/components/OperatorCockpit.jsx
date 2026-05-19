@@ -1,5 +1,5 @@
 /* eslint-disable react/prop-types */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   Archive,
@@ -28,6 +28,7 @@ import {
   X,
 } from 'lucide-react';
 import { APP_ORDER, APPS, getAppInteriorTheme, getShellTheme } from '../utils/constants';
+import BlackFalconConnectorApp from './BlackFalconConnectorApp';
 import {
   DEFAULT_MODEL_ID,
   HUGGINGFACE_GGUF_PRESETS,
@@ -58,6 +59,7 @@ const MODES = [
   { id: 'memory', label: 'MEMORY' },
   { id: 'signal', label: 'SIGNAL' },
   { id: 'system', label: 'SYSTEM' },
+  { id: 'black-falcon', label: '[ BLACK FALCON ]' },
 ];
 
 const DOCTRINES = {
@@ -385,18 +387,28 @@ const Panel = ({
 
 const ModeTabs = ({ mode, onModeChange, theme = DEFAULT_COCKPIT_THEME }) => (
   <div className={`flex flex-wrap items-center gap-1 rounded-lg border p-1 ${theme.subPanel}`}>
-    {MODES.map((entry) => (
-      <button
-        key={entry.id}
-        type="button"
-        onClick={() => onModeChange(entry.id)}
-        className={`rounded-md px-3 py-2 text-[11px] font-semibold tracking-[0.16em] transition ${
-          mode === entry.id ? theme.activeTab : theme.inactiveTab
-        }`}
-      >
-        {entry.label}
-      </button>
-    ))}
+    {MODES.map((entry) => {
+      const isFalcon = entry.id === 'black-falcon';
+      const activeClass = isFalcon
+        ? 'bg-red-500 text-white shadow-sm shadow-red-950/30'
+        : theme.activeTab;
+      const inactiveClass = isFalcon
+        ? 'border border-red-400/20 bg-red-500/10 text-red-100 hover:bg-red-500/20'
+        : theme.inactiveTab;
+
+      return (
+        <button
+          key={entry.id}
+          type="button"
+          onClick={() => onModeChange(entry.id)}
+          className={`rounded-md px-3 py-2 text-[11px] font-semibold tracking-[0.16em] transition ${
+            mode === entry.id ? activeClass : inactiveClass
+          }`}
+        >
+          {entry.label}
+        </button>
+      );
+    })}
   </div>
 );
 
@@ -767,11 +779,13 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
   const [manualOutput, setManualOutput] = useState('');
   const [busy, setBusy] = useState(false);
   const [prepareBusy, setPrepareBusy] = useState(false);
+  const [prepareCanceling, setPrepareCanceling] = useState(false);
   const [testBusy, setTestBusy] = useState(false);
   const [messages, setMessages] = useState([]);
   const [contextOpen, setContextOpen] = useState(false);
   const [outputKind, setOutputKind] = useState('security-review');
   const [activeWorkflowId, setActiveWorkflowId] = useState('freeform');
+  const prepareAbortRef = useRef(null);
   const modelWorkflows = selectedModel.workflows?.length ? selectedModel.workflows : SECURITY_REVIEW_WORKFLOWS;
   const requestContext = useMemo(
     () => buildModelRequestContext(data, prompt || 'security review', { projectId: activeProject.id }),
@@ -781,10 +795,14 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
   const statusLabel = MODEL_STATUS_LABELS[selectedStatus.status] || 'Not installed';
   const modelUnavailable = selectedStatus.status === MODEL_STATUS.UNAVAILABLE;
   const modelNeedsConversion = selectedStatus.status === MODEL_STATUS.NEEDS_CONVERSION;
-  const modelInstalling = selectedStatus.status === MODEL_STATUS.INSTALLING;
-  const prepareDisabled = prepareBusy || modelInstalling || (isHuggingFaceSelected && !huggingFaceSource);
+  const modelCanceled = selectedStatus.status === MODEL_STATUS.CANCELED;
+  const prepareDisabled = prepareBusy || (isHuggingFaceSelected && !huggingFaceSource);
   const prepareButtonLabel = (() => {
-    if (prepareBusy || modelInstalling) {
+    if (prepareCanceling) {
+      return 'Canceling...';
+    }
+
+    if (prepareBusy) {
       return isHuggingFaceSelected ? 'Downloading...' : 'Preparing...';
     }
 
@@ -809,6 +827,10 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
 
     if (modelNeedsConversion) {
       return 'This source needs a GGUF repo/file or a local converted import before ROS can prepare the runtime alias.';
+    }
+
+    if (modelCanceled) {
+      return 'Model download canceled. You can retry when ready.';
     }
 
     if (selectedStatus.status === MODEL_STATUS.NOT_INSTALLED) {
@@ -909,7 +931,10 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
       return;
     }
 
+    const prepareController = new AbortController();
+    prepareAbortRef.current = prepareController;
     setPrepareBusy(true);
+    setPrepareCanceling(false);
     updateModelStatus(selectedModelId, {
       status: MODEL_STATUS.INSTALLING,
       lastPreparedAt: now(),
@@ -926,6 +951,8 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
             status: MODEL_STATUS.INSTALLING,
           },
         },
+      }, {
+        signal: prepareController.signal,
       });
       updateModelStatus(selectedModelId, status);
       if (status.runtimeStatus) {
@@ -935,8 +962,32 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
         lastStatus: status.status === MODEL_STATUS.READY ? 'online' : status.status,
       });
     } finally {
+      if (prepareAbortRef.current === prepareController) {
+        prepareAbortRef.current = null;
+      }
       setPrepareBusy(false);
+      setPrepareCanceling(false);
     }
+  };
+
+  const handleCancelPrepare = () => {
+    const controller = prepareAbortRef.current;
+
+    if (!controller) {
+      return;
+    }
+
+    setPrepareCanceling(true);
+    controller.abort();
+    updateModelStatus(selectedModelId, {
+      status: MODEL_STATUS.CANCELED,
+      lastCheckedAt: now(),
+      lastPreparedAt: now(),
+      lastError: 'Model download canceled.',
+      rawStatus: 'Canceled by operator.',
+    });
+    updateAiSetting({ lastStatus: MODEL_STATUS.CANCELED });
+    setOllamaStatus((current) => ({ ...current, status: 'canceled' }));
   };
 
   const handleAsk = async (question = prompt, workflowId = 'freeform') => {
@@ -1137,7 +1188,18 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
                 {prepareButtonLabel}
               </button>
             </div>
-            {(modelUnavailable || modelNeedsConversion || modelStatusMessage) ? (
+            {prepareBusy ? (
+              <button
+                type="button"
+                onClick={handleCancelPrepare}
+                disabled={prepareCanceling}
+                className={`mt-2 inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold disabled:cursor-wait disabled:opacity-60 ${theme.secondaryButton}`}
+              >
+                <X size={14} />
+                {prepareCanceling ? 'Canceling download' : 'Cancel download'}
+              </button>
+            ) : null}
+            {(modelUnavailable || modelNeedsConversion || modelCanceled || modelStatusMessage) ? (
               <p className="mt-2 text-xs leading-5 text-amber-200/80">
                 {modelStatusMessage || 'Model unavailable. You can still save a response manually.'}
               </p>
@@ -1990,6 +2052,7 @@ const SURFACE_LABELS = {
   memory: 'Memory',
   signal: 'Signal',
   system: 'System Surface',
+  'black-falcon': 'Black Falcon',
   search: 'Search',
 };
 
@@ -2142,6 +2205,10 @@ const CenterWorkspace = ({
 
   if (mode === 'signal') {
     return <SignalWorkspace activeProject={activeProject} memoryResults={memoryResults} theme={theme} />;
+  }
+
+  if (mode === 'black-falcon') {
+    return <BlackFalconConnectorApp />;
   }
 
   if (mode === 'system') {

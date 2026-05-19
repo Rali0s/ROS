@@ -96,6 +96,8 @@ export const unlockNativeWorkspace = async ({ passphrase }) =>
 
 export const lockNativeWorkspace = async () => invokeNative('lock_workspace');
 
+export const startNativeOllamaService = async () => invokeNative('start_ollama_service');
+
 export const listNativeCompartments = async () => invokeNative('list_compartments');
 
 export const unlockNativeCompartment = async ({ compartmentId, intent }) =>

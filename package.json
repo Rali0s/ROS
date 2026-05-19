@@ -13,6 +13,7 @@
     "desktop:dev": "cd src-tauri && cargo tauri dev",
     "desktop:build": "cd src-tauri && cargo tauri build",
     "desktop:build:windows": "cd src-tauri && cargo tauri build --bundles nsis",
+    "test:black-falcon": "node scripts/test-black-falcon.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "release:checksums": "node scripts/generate-release-checksums.mjs",

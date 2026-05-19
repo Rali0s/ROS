@@ -16,13 +16,14 @@ const readErrorResponse = async (response) => {
 
 export const normalizeOllamaBaseUrl = normalizeBaseUrl;
 
-export const checkOllamaStatus = async ({ baseUrl, model } = {}) => {
+export const checkOllamaStatus = async ({ baseUrl, model, signal } = {}) => {
   const endpoint = `${normalizeBaseUrl(baseUrl)}/api/tags`;
   const response = await fetch(endpoint, {
     method: 'GET',
     headers: {
       Accept: 'application/json',
     },
+    signal,
   });
 
   if (!response.ok) {
@@ -48,6 +49,7 @@ export const chatWithOllama = async ({
   contextItems = [],
   contextBlock: providedContextBlock = '',
   systemPrompt = '',
+  signal,
 }) => {
   const selectedModel = String(model || '').trim();
 
@@ -100,6 +102,7 @@ export const chatWithOllama = async ({
         })),
       ],
     }),
+    signal,
   });
 
   if (!response.ok) {
@@ -117,7 +120,7 @@ export const chatWithOllama = async ({
   };
 };
 
-export const pullOllamaModel = async ({ baseUrl, model }) => {
+export const pullOllamaModel = async ({ baseUrl, model, signal }) => {
   const selectedModel = String(model || '').trim();
 
   if (!selectedModel) {
@@ -134,6 +137,7 @@ export const pullOllamaModel = async ({ baseUrl, model }) => {
       model: selectedModel,
       stream: false,
     }),
+    signal,
   });
 
   if (!response.ok) {
@@ -144,17 +148,40 @@ export const pullOllamaModel = async ({ baseUrl, model }) => {
   return response.json();
 };
 
-export const createOllamaModel = async ({ baseUrl, model, modelfile }) => {
+export const createOllamaModel = async ({
+  baseUrl,
+  model,
+  fromModel,
+  system,
+  parameters,
+  modelfile,
+  signal,
+}) => {
   const selectedModel = String(model || '').trim();
   const modelDefinition = String(modelfile || '').trim();
+  const baseModel = String(fromModel || '').trim();
 
   if (!selectedModel) {
     throw new Error('Select a local model before preparing it.');
   }
 
-  if (!modelDefinition) {
+  if (!baseModel && !modelDefinition) {
     throw new Error('This local model is missing a model definition.');
   }
+
+  const body = baseModel
+    ? {
+        model: selectedModel,
+        from: baseModel,
+        ...(system ? { system } : {}),
+        ...(parameters && Object.keys(parameters).length ? { parameters } : {}),
+        stream: false,
+      }
+    : {
+        model: selectedModel,
+        modelfile: modelDefinition,
+        stream: false,
+      };
 
   const response = await fetch(`${normalizeBaseUrl(baseUrl)}/api/create`, {
     method: 'POST',
@@ -162,16 +189,43 @@ export const createOllamaModel = async ({ baseUrl, model, modelfile }) => {
       'Content-Type': 'application/json',
       Accept: 'application/json',
     },
-    body: JSON.stringify({
-      model: selectedModel,
-      modelfile: modelDefinition,
-      stream: false,
-    }),
+    body: JSON.stringify(body),
+    signal,
   });
 
   if (!response.ok) {
     const detail = await readErrorResponse(response);
     throw new Error(`Local model prepare failed with ${response.status}${detail ? `: ${detail}` : ''}`);
+  }
+
+  return response.json();
+};
+
+export const startOllamaModel = async ({ baseUrl, model, keepAlive = '10m', signal }) => {
+  const selectedModel = String(model || '').trim();
+
+  if (!selectedModel) {
+    throw new Error('Select a local model before starting it.');
+  }
+
+  const response = await fetch(`${normalizeBaseUrl(baseUrl)}/api/generate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      model: selectedModel,
+      prompt: '',
+      stream: false,
+      keep_alive: keepAlive,
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const detail = await readErrorResponse(response);
+    throw new Error(`Local model start failed with ${response.status}${detail ? `: ${detail}` : ''}`);
   }
 
   return response.json();

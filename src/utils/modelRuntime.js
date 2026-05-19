@@ -3,6 +3,7 @@ import {
   checkOllamaStatus,
   createOllamaModel,
   pullOllamaModel,
+  startOllamaModel,
 } from './ollamaClient';
 import {
   HUGGINGFACE_MODEL_ID,
@@ -14,6 +15,7 @@ import {
   normalizeHuggingFaceSource,
   resolveRuntimeModelName,
 } from './modelCatalog';
+import { isNativeVaultRuntime, startNativeOllamaService } from './nativeVault';
 
 const serializeRawStatus = (value) => {
   try {
@@ -26,11 +28,112 @@ const serializeRawStatus = (value) => {
 const getFriendlyError = (error) => {
   const message = error instanceof Error ? error.message : String(error || '');
 
+  if (error?.name === 'AbortError' || /abort|cancell?ed/i.test(message)) {
+    return 'Model download canceled.';
+  }
+
   if (/Failed to fetch|NetworkError|Load failed/i.test(message)) {
     return 'Local model service is unavailable.';
   }
 
   return message || 'Local model is unavailable.';
+};
+
+const isAbortError = (error, signal) => Boolean(
+  signal?.aborted ||
+    error?.name === 'AbortError' ||
+    /abort|cancell?ed/i.test(error instanceof Error ? error.message : String(error || '')),
+);
+
+const parseModelfileParameters = (modelfile = '') => {
+  const parameters = {};
+  const lines = String(modelfile || '').split('\n');
+
+  for (const line of lines) {
+    const match = line.trim().match(/^PARAMETER\s+([a-z_]+)\s+(.+)$/i);
+
+    if (!match) {
+      continue;
+    }
+
+    const [, key, rawValue] = match;
+    const numericValue = Number(rawValue);
+    parameters[key] = Number.isFinite(numericValue) ? numericValue : rawValue.replace(/^"|"$/g, '');
+  }
+
+  return parameters;
+};
+
+const getCreatePayload = ({ selectedModel, huggingFaceConfig, huggingFaceSource }) => {
+  if (selectedModel.id === HUGGINGFACE_MODEL_ID) {
+    return {
+      fromModel: huggingFaceSource,
+      system: huggingFaceConfig.systemPrompt,
+      parameters: {
+        temperature: huggingFaceConfig.temperature,
+        top_p: huggingFaceConfig.topP,
+        repeat_penalty: huggingFaceConfig.repeatPenalty,
+        num_ctx: huggingFaceConfig.numCtx,
+        num_predict: huggingFaceConfig.numPredict,
+      },
+    };
+  }
+
+  if (selectedModel.baseModel) {
+    return {
+      fromModel: selectedModel.baseModel,
+      system: selectedModel.systemPrompt,
+      parameters: parseModelfileParameters(selectedModel.modelfile),
+    };
+  }
+
+  return {
+    modelfile: selectedModel.modelfile,
+  };
+};
+
+const wait = (milliseconds) => new Promise((resolve) => {
+  setTimeout(resolve, milliseconds);
+});
+
+const ensureLocalModelService = async ({ baseUrl, model, signal } = {}) => {
+  try {
+    return {
+      started: false,
+      status: await checkOllamaStatus({ baseUrl, model, signal }),
+    };
+  } catch (error) {
+    if (isAbortError(error, signal) || !isNativeVaultRuntime()) {
+      throw error;
+    }
+  }
+
+  const startResult = await startNativeOllamaService();
+
+  if (!startResult) {
+    throw new Error('Local model service is unavailable.');
+  }
+
+  let lastError = null;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    if (signal?.aborted) {
+      throw new DOMException('Model download canceled.', 'AbortError');
+    }
+
+    await wait(500);
+
+    try {
+      return {
+        started: Boolean(startResult.started),
+        serviceStart: startResult,
+        status: await checkOllamaStatus({ baseUrl, model, signal }),
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('Local model service did not start.');
 };
 
 const formatModelBytes = (value) => {
@@ -70,7 +173,7 @@ const isGgufVariantFile = (fileName, variant) => {
   return variantPattern.test(cleanFileName);
 };
 
-export const inspectHuggingFaceModelSource = async (source = '') => {
+export const inspectHuggingFaceModelSource = async (source = '', { signal } = {}) => {
   const details = getHuggingFaceSourceDetails(source);
 
   if (!details.repoId) {
@@ -90,6 +193,7 @@ export const inspectHuggingFaceModelSource = async (source = '') => {
     headers: {
       Accept: 'application/json',
     },
+    signal,
   });
 
   if (!response.ok) {
@@ -170,13 +274,14 @@ const resolveRuntimeModel = (modelId, settings = {}, fallbackModel = '') => {
   };
 };
 
-export const checkModelStatus = async (modelId, settings = {}) => {
+export const checkModelStatus = async (modelId, settings = {}, { signal } = {}) => {
   const { selectedModel, runtimeModel, huggingFaceConfig } = resolveRuntimeModel(modelId, settings);
 
   try {
     const status = await checkOllamaStatus({
       baseUrl: settings.ollamaBaseUrl,
       model: runtimeModel,
+      signal,
     });
     const available = status.models.some((model) => model.name === runtimeModel);
 
@@ -198,6 +303,26 @@ export const checkModelStatus = async (modelId, settings = {}) => {
       runtimeStatus: status,
     };
   } catch (error) {
+    if (isAbortError(error, signal)) {
+      return {
+        status: MODEL_STATUS.CANCELED,
+        installedVersion: '',
+        lastCheckedAt: new Date().toISOString(),
+        lastPreparedAt: settings.modelStatuses?.[modelId]?.lastPreparedAt || '',
+        lastError: 'Model download canceled.',
+        rawStatus: serializeRawStatus({
+          runtime: selectedModel.runtime,
+          runtimeModel,
+          canceled: true,
+        }),
+        runtimeStatus: {
+          status: 'canceled',
+          model: runtimeModel,
+          models: [],
+        },
+      };
+    }
+
     return {
       status: MODEL_STATUS.UNAVAILABLE,
       installedVersion: '',
@@ -221,16 +346,23 @@ export const checkModelStatus = async (modelId, settings = {}) => {
   }
 };
 
-export const installModel = async (modelId, settings = {}) => {
+export const installModel = async (modelId, settings = {}, { signal } = {}) => {
   const { selectedModel, runtimeModel, huggingFaceConfig } = resolveRuntimeModel(modelId, settings);
 
   try {
     const huggingFaceSource = selectedModel.id === HUGGINGFACE_MODEL_ID
       ? normalizeHuggingFaceSource(huggingFaceConfig.source)
       : '';
-    const modelfile = selectedModel.id === HUGGINGFACE_MODEL_ID
-      ? buildHuggingFaceModelfile(settings)
-      : selectedModel.modelfile;
+    const createPayload = getCreatePayload({
+      selectedModel,
+      huggingFaceConfig,
+      huggingFaceSource,
+    });
+    const modelfile = createPayload.modelfile || (
+      selectedModel.id === HUGGINGFACE_MODEL_ID
+        ? buildHuggingFaceModelfile(settings)
+        : selectedModel.modelfile
+    );
 
     if (selectedModel.id === HUGGINGFACE_MODEL_ID && !huggingFaceSource) {
       throw new Error('Add a Hugging Face model reference before preparing this adapter.');
@@ -239,8 +371,12 @@ export const installModel = async (modelId, settings = {}) => {
     let huggingFaceProfile = null;
     if (selectedModel.id === HUGGINGFACE_MODEL_ID) {
       try {
-        huggingFaceProfile = await inspectHuggingFaceModelSource(huggingFaceConfig.source);
+        huggingFaceProfile = await inspectHuggingFaceModelSource(huggingFaceConfig.source, { signal });
       } catch (error) {
+        if (isAbortError(error, signal)) {
+          throw error;
+        }
+
         huggingFaceProfile = {
           ...getHuggingFaceSourceDetails(huggingFaceConfig.source),
           checked: false,
@@ -274,17 +410,31 @@ export const installModel = async (modelId, settings = {}) => {
       };
     }
 
+    const service = await ensureLocalModelService({
+      baseUrl: settings.ollamaBaseUrl,
+      model: runtimeModel,
+      signal,
+    });
     const prepareResult = modelfile
       ? await createOllamaModel({
           baseUrl: settings.ollamaBaseUrl,
           model: runtimeModel,
+          ...createPayload,
           modelfile,
+          signal,
         })
       : await pullOllamaModel({
           baseUrl: settings.ollamaBaseUrl,
           model: runtimeModel,
+          signal,
         });
-    const checked = await checkModelStatus(modelId, settings);
+    const startResult = await startOllamaModel({
+      baseUrl: settings.ollamaBaseUrl,
+      model: runtimeModel,
+      keepAlive: settings.keepAlive || '10m',
+      signal,
+    });
+    const checked = await checkModelStatus(modelId, settings, { signal });
 
     return {
       ...checked,
@@ -298,11 +448,36 @@ export const installModel = async (modelId, settings = {}) => {
         localDownload: huggingFaceProfile?.downloadSizeLabel
           ? `Ollama downloaded ${huggingFaceProfile.downloadSizeLabel} into the local runtime store.`
           : undefined,
+        service,
         prepare: prepareResult,
+        start: startResult,
         check: checked.rawStatus,
       }),
     };
   } catch (error) {
+    if (isAbortError(error, signal)) {
+      return {
+        status: MODEL_STATUS.CANCELED,
+        installedVersion: '',
+        lastCheckedAt: new Date().toISOString(),
+        lastPreparedAt: new Date().toISOString(),
+        lastError: 'Model download canceled.',
+        rawStatus: serializeRawStatus({
+          runtime: selectedModel.runtime,
+          runtimeModel,
+          huggingFaceSource: selectedModel.id === HUGGINGFACE_MODEL_ID
+            ? normalizeHuggingFaceSource(huggingFaceConfig.source) || 'not configured'
+            : undefined,
+          canceled: true,
+        }),
+        runtimeStatus: {
+          status: 'canceled',
+          model: runtimeModel,
+          models: [],
+        },
+      };
+    }
+
     return {
       status: MODEL_STATUS.UNAVAILABLE,
       installedVersion: '',

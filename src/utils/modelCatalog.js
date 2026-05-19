@@ -323,6 +323,7 @@ export const MODEL_STATUS = {
   READY: 'ready',
   UNAVAILABLE: 'unavailable',
   NEEDS_CONVERSION: 'needs-conversion',
+  CANCELED: 'canceled',
   UPDATE_AVAILABLE: 'update-available',
 };
 
@@ -332,6 +333,7 @@ export const MODEL_STATUS_LABELS = {
   [MODEL_STATUS.READY]: 'Ready',
   [MODEL_STATUS.UNAVAILABLE]: 'Unavailable',
   [MODEL_STATUS.NEEDS_CONVERSION]: 'Needs conversion',
+  [MODEL_STATUS.CANCELED]: 'Canceled',
   [MODEL_STATUS.UPDATE_AVAILABLE]: 'Update available',
 };
 
