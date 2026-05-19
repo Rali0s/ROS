@@ -1,8 +1,14 @@
 # OSA Midnight Oil
 
+**Version 2 / build v0.2** is the current local-first preview release.
+
 OSA Midnight Oil is a local-first desktop workspace built around a master-locked encrypted vault. It combines planning, note-taking, reference capture, identity organization, wallet storage, research tooling, and a cinematic ROS-style shell into one self-contained environment.
 
 The project is designed to feel like a personal operations desk rather than a cloud app. Workspace data stays local, can be locked behind a passphrase, and is intended to remain useful offline.
+
+## Version 2 Preview
+
+Version 2 tightens the ROS shell into a darker, more focused operator workspace. The v0.2 build highlights the updated entry surface, cockpit treatment, local-first trust posture, and the newer module flow for research, notes, terminal work, and vault-backed workspace state.
 
 ## Safe Public Usage
 
@@ -104,6 +110,18 @@ Additional project utilities:
 - Tauri/Rust build artifacts can consume several gigabytes. If local disk is tight, clearing `src-tauri/target` and `rust-core/target` is the fastest safe cleanup.
 
 ## Screenshots
+
+### Version 2 Cockpit
+
+![OSA Midnight Oil Version 2 cockpit view](HD/v2.png)
+
+### Version 2 Entry Surface
+
+![OSA Midnight Oil Version 2 entry surface](HD/v2b.png)
+
+### Version 2 Workspace Flow
+
+![OSA Midnight Oil Version 2 workspace flow](HD/v2c.png)
 
 ### Secure Workspace Setup
 
