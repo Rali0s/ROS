@@ -1,5 +1,6 @@
 mod secure_core;
 mod lan_party;
+mod license;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use once_cell::sync::Lazy;
@@ -60,6 +61,18 @@ struct InitializeWorkspaceArgs {
 #[serde(rename_all = "camelCase")]
 struct UnlockWorkspaceArgs {
     passphrase: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstallLicenseArgs {
+    key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CheckFeatureArgs {
+    feature_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -472,6 +485,26 @@ fn get_vault_state() -> Result<VaultStateResponse, String> {
         beta_workspace_detected,
         keystore_available,
     })
+}
+
+#[tauri::command]
+fn get_license_state() -> Result<license::LicenseState, String> {
+    Ok(license::current_license())
+}
+
+#[tauri::command]
+fn install_license_key(args: InstallLicenseArgs) -> Result<license::LicenseState, String> {
+    license::install_license_key(&args.key)
+}
+
+#[tauri::command]
+fn remove_license() -> Result<license::LicenseState, String> {
+    license::remove_license()
+}
+
+#[tauri::command]
+fn check_feature(args: CheckFeatureArgs) -> Result<license::FeatureCheck, String> {
+    Ok(license::check_feature(&args.feature_id))
 }
 
 #[tauri::command]
@@ -933,6 +966,10 @@ fn get_lan_party_state(args: GetLanPartyStateArgs) -> Result<lan_party::LanParty
 
 #[tauri::command]
 fn set_lan_party_enabled(args: EnableLanPartyArgs) -> Result<lan_party::LanPartyState, String> {
+    if args.enabled {
+        license::require_feature("fsociety_lan")?;
+    }
+
     Ok(lan_party::set_enabled(lan_party::EnableLanArgs {
         enabled: args.enabled,
         codename: args.codename,
@@ -1432,6 +1469,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_vault_state,
+            get_license_state,
+            install_license_key,
+            remove_license,
+            check_feature,
             initialize_workspace,
             unlock_workspace,
             lock_workspace,

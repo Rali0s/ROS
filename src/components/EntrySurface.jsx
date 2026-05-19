@@ -180,20 +180,24 @@ const DoctrineNode = ({
   );
 };
 
-const CenterNode = ({ onOpenCockpit }) => (
+const CenterNode = ({ defenseArmed, onOpenCockpit }) => (
   <button
     type="button"
     onClick={onOpenCockpit}
-    className="absolute left-1/2 top-1/2 z-30 grid h-52 w-52 -translate-x-1/2 -translate-y-1/2 rotate-45 place-items-center border border-cyan-100/36 bg-[linear-gradient(135deg,rgba(22,30,36,0.82),rgba(14,21,26,0.88))] shadow-[0_0_42px_rgba(103,232,249,0.14),0_22px_76px_rgba(0,0,0,0.26)] backdrop-blur-md transition duration-200 hover:border-cyan-100/60 hover:shadow-[0_0_54px_rgba(103,232,249,0.18),0_22px_76px_rgba(0,0,0,0.3)] focus:outline-none focus:ring-1 focus:ring-cyan-100/50"
+    className={`absolute left-1/2 top-1/2 z-30 grid h-52 w-52 -translate-x-1/2 -translate-y-1/2 rotate-45 place-items-center border bg-[linear-gradient(135deg,rgba(22,30,36,0.82),rgba(14,21,26,0.88))] shadow-[0_0_42px_rgba(103,232,249,0.14),0_22px_76px_rgba(0,0,0,0.26)] backdrop-blur-md transition duration-200 hover:shadow-[0_0_54px_rgba(103,232,249,0.18),0_22px_76px_rgba(0,0,0,0.3)] focus:outline-none focus:ring-1 focus:ring-cyan-100/50 ${
+      defenseArmed
+        ? 'border-amber-200/48 hover:border-amber-100/70'
+        : 'border-cyan-100/36 hover:border-cyan-100/60'
+    }`}
   >
     <span className="grid -rotate-45 place-items-center text-center">
-      <Lock size={30} className="text-cyan-100/90" />
-      <span className="mt-5 text-sm font-semibold uppercase tracking-[0.36em] text-white">Unlock Cockpit</span>
-      <span className="mt-3 inline-flex items-center gap-1.5 text-xs text-cyan-100">
-        <span className="h-1.5 w-1.5 rounded-full bg-cyan-200" />
-        local only
+      <Lock size={30} className={defenseArmed ? 'text-amber-100/92' : 'text-cyan-100/90'} />
+      <span className="mt-5 text-sm font-semibold uppercase tracking-[0.34em] text-white">Operator Memory</span>
+      <span className={`mt-3 inline-flex items-center gap-1.5 text-xs ${defenseArmed ? 'text-amber-100' : 'text-cyan-100'}`}>
+        <span className={`h-1.5 w-1.5 rounded-full ${defenseArmed ? 'bg-amber-200' : 'bg-cyan-200'}`} />
+        {defenseArmed ? 'True-Local' : 'Offline'}
       </span>
-      <span className="mt-2 text-xs text-slate-500">operator memory ready</span>
+      <span className="mt-2 text-xs text-slate-500">{defenseArmed ? 'dead-man armed' : 'operator memory ready'}</span>
     </span>
   </button>
 );
@@ -268,6 +272,7 @@ const EntrySurface = ({ orderedApps, data, time, shellTheme, onOpenModule, onOpe
   const activeProject = Array.isArray(data.projects)
     ? data.projects.find((project) => project.id === data.activeProjectId) || data.projects[0]
     : null;
+  const defenseArmed = Boolean(data.settings?.deadMansTriggerEnabled);
 
   const handleSelectDoctrine = (doctrineId) => {
     setSelectedDoctrine(doctrineId);
@@ -314,7 +319,7 @@ const EntrySurface = ({ orderedApps, data, time, shellTheme, onOpenModule, onOpe
             <div className="absolute left-[22%] top-1/2 h-px w-[56%] -translate-y-1/2 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
             <ConnectorLines activeDoctrineId={activeDoctrineId} />
 
-            <CenterNode onOpenCockpit={onOpenCockpit} />
+            <CenterNode defenseArmed={defenseArmed} onOpenCockpit={onOpenCockpit} />
 
             {DOCTRINE_ORDER.map((doctrineId) => {
               const doctrine = DOCTRINES[doctrineId];

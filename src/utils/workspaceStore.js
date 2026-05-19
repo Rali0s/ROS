@@ -3473,7 +3473,7 @@ export const unlockWorkspace = async (passphrase) => {
   }
 };
 
-export const lockWorkspace = (notice = 'Workspace locked.') => {
+export const lockWorkspace = (notice = 'Workspace locked.', options = {}) => {
   ensureStoreInitialized();
   const finalizeLock = () => {
     clearPersistTimer();
@@ -3562,6 +3562,11 @@ export const lockWorkspace = (notice = 'Workspace locked.') => {
       });
     }
   };
+
+  if (options.skipSnapshot) {
+    finalizeLock();
+    return;
+  }
 
   runAutoSnapshotExport({ trigger: 'lock' })
     .catch((error) => {

@@ -38,12 +38,22 @@ import {
 import { SHELL_THEMES, WALLPAPERS } from '../utils/constants';
 import {
   isNativeVaultRuntime,
+  getNativeLicenseState,
+  installNativeLicenseKey,
   listNativeAccessibilityPrinters,
   openNativeTextFileDialog,
+  removeNativeLicense,
   saveNativeTextFileDialog,
   speakNativeAccessibilityPrompt,
 } from '../utils/nativeVault';
 import { useWorkspaceData } from '../utils/workspaceStore';
+import {
+  FEATURE_LABELS,
+  LICENSE_FEATURES,
+  getTierBadgeClass,
+  hasLicenseFeature,
+  normalizeLicenseState,
+} from '../utils/entitlements';
 
 const triggerDownload = (content, filename) => {
   const blob = new Blob([content], { type: 'application/json' });
@@ -82,9 +92,22 @@ const SettingsApp = () => {
   const [fileVaultBusy, setFileVaultBusy] = useState(false);
   const [printerStatus, setPrinterStatus] = useState(null);
   const [accessibilityBusy, setAccessibilityBusy] = useState(false);
+  const [licenseState, setLicenseState] = useState(normalizeLicenseState(null));
+  const [licenseKeyDraft, setLicenseKeyDraft] = useState('');
+  const [licenseBusy, setLicenseBusy] = useState(false);
   const fileInputRef = useRef(null);
   const validationFileInputRef = useRef(null);
   const isNativeDesktop = isNativeVaultRuntime() && session.backend === 'tauri-native';
+
+  const refreshLicenseState = async () => {
+    if (!isNativeVaultRuntime()) {
+      setLicenseState(normalizeLicenseState(null));
+      return;
+    }
+
+    const next = await getNativeLicenseState();
+    setLicenseState(normalizeLicenseState(next));
+  };
 
   useEffect(() => {
     setCodename(data.settings.codename);
@@ -94,6 +117,12 @@ const SettingsApp = () => {
   useEffect(() => {
     setFeedbackDraft(data.settings.betaFeedbackDraft || '');
   }, [data.settings.betaFeedbackDraft]);
+
+  useEffect(() => {
+    refreshLicenseState().catch(() => {
+      setLicenseState(normalizeLicenseState(null));
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -384,11 +413,10 @@ const SettingsApp = () => {
   };
 
   const handlePanicLock = () => {
-    if (!window.confirm('Engage panic lock and clear sensitive views from this session?')) {
-      return;
-    }
-    lockWorkspace('Panic lock engaged. Workspace memory cleared and sensitive views closed.');
-    setStatus('Panic lock engaged.');
+    clearSessionAccessLog();
+    lockWorkspace('Panic lock engaged. Workspace memory cleared and sensitive views closed.', {
+      skipSnapshot: true,
+    });
   };
 
   const handlePurgeOrphans = async () => {
@@ -491,7 +519,7 @@ const SettingsApp = () => {
   const linkedFileVaultEntries = fileVaultEntries.filter((entry) => !entry.orphaned);
   const fileDeleteMode = data.settings.fileVaultDeleteMode || 'secure-delete';
   const accountStatus = getAccountStatus(data.settings);
-  const entitlementStatus = getEntitlementStatus();
+  const entitlementStatus = getEntitlementStatus(licenseState);
   const releaseStatus = getReleaseStatus(session);
   const betaSignals = getBetaSignals(data.settings);
   const workspaceHealth = getWorkspaceHealth({ data, session, fileVaultEntries });
@@ -520,6 +548,7 @@ const SettingsApp = () => {
         session,
         fileVaultEntries,
         feedbackDraft,
+        licenseState,
       });
       const filename = `osa-midnight-oil-support-${new Date().toISOString().slice(0, 10)}.json`;
       const serialized = JSON.stringify(bundle, null, 2);
@@ -573,6 +602,59 @@ const SettingsApp = () => {
     }
   };
 
+  const handleInstallLicense = async () => {
+    if (!licenseKeyDraft.trim()) {
+      setStatus('Paste a signed ROS license key first.');
+      return;
+    }
+
+    if (!isNativeVaultRuntime()) {
+      setStatus('Native license validation is available in the desktop app.');
+      return;
+    }
+
+    setLicenseBusy(true);
+    try {
+      const next = await installNativeLicenseKey({ key: licenseKeyDraft.trim() });
+      setLicenseState(normalizeLicenseState(next));
+      setLicenseKeyDraft('');
+      setStatus('License installed and validated locally.');
+    } catch (error) {
+      setStatus(error.message || 'License validation failed.');
+    } finally {
+      setLicenseBusy(false);
+    }
+  };
+
+  const handleRemoveLicense = async () => {
+    if (!isNativeVaultRuntime()) {
+      setLicenseState(normalizeLicenseState(null));
+      return;
+    }
+
+    setLicenseBusy(true);
+    try {
+      const next = await removeNativeLicense();
+      setLicenseState(normalizeLicenseState(next));
+      setStatus('License removed. Individual ROS is active.');
+    } catch (error) {
+      setStatus(error.message || 'Unable to remove license.');
+    } finally {
+      setLicenseBusy(false);
+    }
+  };
+
+  const entitlementRows = [
+    LICENSE_FEATURES.CORE_COCKPIT,
+    LICENSE_FEATURES.COMMAND_MEMORY_CONSOLE,
+    LICENSE_FEATURES.MODEL_WORKSPACE,
+    LICENSE_FEATURES.SECURITY_MODEL_V1,
+    LICENSE_FEATURES.FSOCIETY_LAN,
+    LICENSE_FEATURES.ORGANIZATION_PANEL,
+    LICENSE_FEATURES.LINKED_ROS_NODES,
+    LICENSE_FEATURES.DEVELOPER_MODE,
+  ];
+
   return (
     <div className="flex h-full min-h-0 bg-slate-950 text-slate-100">
       <aside className="w-80 overflow-y-auto border-r border-white/10 bg-slate-900/80 p-5">
@@ -615,6 +697,52 @@ const SettingsApp = () => {
               placeholder="Waitlist / referral / direct"
             />
           </label>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-cyan-300/16 bg-cyan-500/8 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-cyan-100">
+              <Sparkles size={16} />
+              ROS License
+            </div>
+            <span className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${getTierBadgeClass(licenseState)}`}>
+              {licenseState.label}
+            </span>
+          </div>
+          <div className="mt-3 space-y-1 text-sm text-slate-300">
+            <div>Status: {licenseState.status}</div>
+            <div>Expires: {licenseState.expiresAt || 'No expiry for current mode'}</div>
+            <div>Email: {licenseState.customerEmail || 'Not linked'}</div>
+          </div>
+          {licenseState.warning ? (
+            <div className="mt-3 rounded-xl border border-amber-400/18 bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-100">
+              {licenseState.warning}
+            </div>
+          ) : null}
+          <textarea
+            value={licenseKeyDraft}
+            onChange={(event) => setLicenseKeyDraft(event.target.value)}
+            className="mt-3 h-24 w-full resize-none rounded-xl border border-white/10 bg-black/30 px-3 py-2 font-mono text-xs text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-300/35"
+            placeholder="Paste signed ROS license key"
+          />
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              disabled={licenseBusy}
+              onClick={handleInstallLicense}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-100 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Validate key
+            </button>
+            <button
+              type="button"
+              disabled={licenseBusy}
+              onClick={handleRemoveLicense}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.055] px-3 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Remove
+            </button>
+          </div>
         </div>
 
         <div className="mt-6 space-y-4">
@@ -792,6 +920,71 @@ const SettingsApp = () => {
                   </div>
                 </div>
               </div>
+            </div>
+          </article>
+
+          <article className="rounded-2xl border border-cyan-300/16 bg-[linear-gradient(180deg,rgba(8,47,73,0.16),rgba(2,6,23,0.96))] p-5 xl:col-span-2">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-cyan-100">
+                  <Sparkles size={16} />
+                  Offline license and entitlements
+                </div>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+                  ROS validates signed license keys locally. The license file sits beside the encrypted workspace so
+                  your tier can be shown before unlock without exposing vault contents.
+                </p>
+              </div>
+              <span className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] ${getTierBadgeClass(licenseState)}`}>
+                {licenseState.label}
+              </span>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {entitlementRows.map((featureId) => {
+                const unlocked = hasLicenseFeature(licenseState, featureId);
+                return (
+                  <div
+                    key={featureId}
+                    className={`rounded-2xl border p-4 transition ${
+                      unlocked
+                        ? 'border-cyan-300/18 bg-cyan-500/8 text-cyan-50'
+                        : 'border-white/10 bg-white/[0.035] text-slate-500'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 text-sm font-semibold">{FEATURE_LABELS[featureId] || featureId}</div>
+                      <span
+                        className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
+                          unlocked
+                            ? 'border-emerald-300/18 bg-emerald-500/10 text-emerald-100'
+                            : 'border-amber-300/14 bg-amber-500/8 text-amber-100/80'
+                        }`}
+                      >
+                        {unlocked ? 'Unlocked' : 'Upgrade'}
+                      </span>
+                    </div>
+                    <div className="mt-3 text-xs leading-5">
+                      {unlocked
+                        ? 'Available under the current local license.'
+                        : 'Greyed until a Founder, Pro, Enterprise, or Developer key unlocks it.'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              {[
+                ['Checkout', 'Stripe handles purchase, renewals, upgrades, and the customer portal.'],
+                ['License issue', 'Keygen signs short-expiry keys after checkout through the webhook bridge.'],
+                ['Offline use', 'ROS validates locally until expiry; no telemetry is required for normal use.'],
+              ].map(([label, detail]) => (
+                <div key={label} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-slate-500">{label}</div>
+                  <div className="mt-2 text-sm leading-6 text-slate-300">{detail}</div>
+                </div>
+              ))}
             </div>
           </article>
 
@@ -1192,7 +1385,7 @@ const SettingsApp = () => {
               {[
                 ['sessionDefenseEnabled', 'Enable Session Defense', ShieldAlert],
                 ['sessionDefenseBlurLock', 'Lock workspace on app blur', Lock],
-                ['deadMansTriggerEnabled', 'Arm final-window trigger', Shield],
+                ['deadMansTriggerEnabled', 'Arm True-Local Defense', Shield],
                 ['privacyModeEnabled', 'Enable privacy mode', Shield],
                 ['privacyPressHoldReveal', 'Press-and-hold reveal', EyeOff],
                 ['privacyAutoRedactOnBlur', 'Auto-redact on blur', Shield],
@@ -1278,6 +1471,8 @@ const SettingsApp = () => {
               Dead-man trigger: when armed, closing the final open app window will{' '}
               {data.settings.sessionDefenseLastWindowAction === 'lock' ? 'lock the workspace' : 'NUKE the workspace'}
               . This trigger now works independently of the broader Session Defense toggle.
+              In cockpit mode, the disarm identifier is <span className="font-semibold text-violet-100">DM-CCW-01</span>:
+              expand the collapsed Intelligence Rail, then the collapsed left rail. During QA, wrong-order cockpit moves hard-lock the workspace first; nuke stays limited to the final-window trigger until the sequence is proven.
             </div>
 
             <div className="mt-5 rounded-2xl border border-cyan-500/15 bg-cyan-500/5 p-4">

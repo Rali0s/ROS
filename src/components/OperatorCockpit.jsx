@@ -130,6 +130,9 @@ const MODEL_OUTPUT_KINDS = [
   { id: 'ai-output', label: 'General output' },
 ];
 
+const DEAD_MAN_SEQUENCE = ['rail', 'left'];
+const DEAD_MAN_MODE_ID = 'DM-CCW-01';
+
 const getCockpitTheme = (themeId) => {
   const interior = getAppInteriorTheme(themeId);
   const shell = getShellTheme(themeId);
@@ -355,6 +358,7 @@ const Panel = ({
   icon: Icon,
   children,
   className = '',
+  headerAction = null,
   primary = false,
   theme = DEFAULT_COCKPIT_THEME,
 }) => (
@@ -369,9 +373,42 @@ const Panel = ({
           {title}
         </div>
       </div>
+      {headerAction}
     </div>
     <div className="min-h-0 p-4">{children}</div>
   </section>
+);
+
+const CollapsedSidePanel = ({
+  label,
+  eyebrow,
+  icon: Icon,
+  onExpand,
+  armed = false,
+  sequenceLabel = '',
+  theme = DEFAULT_COCKPIT_THEME,
+}) => (
+  <button
+    type="button"
+    onClick={onExpand}
+    className={`group flex min-h-[12rem] w-full flex-col items-center justify-between rounded-lg border px-2 py-3 transition ${
+      armed ? 'border-amber-300/25 bg-amber-500/[0.08] text-amber-100' : theme.subPanelHover
+    } focus:outline-none focus:ring-1 focus:ring-cyan-100/20`}
+    title={`Expand ${label}`}
+    aria-label={`Expand ${label}`}
+  >
+    <ChevronRight size={15} className={armed ? 'text-amber-200' : theme.icon} />
+    {Icon ? <Icon size={16} className={armed ? 'text-amber-200' : 'text-slate-500 transition group-hover:text-cyan-100'} /> : null}
+    <span className="mt-2 [writing-mode:vertical-rl] rotate-180 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400 transition group-hover:text-slate-100">
+      {label}
+    </span>
+    <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-600">{eyebrow}</span>
+    {armed ? (
+      <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-1.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-amber-100">
+        {sequenceLabel}
+      </span>
+    ) : null}
+  </button>
 );
 
 const ModeTabs = ({ mode, onModeChange, theme = DEFAULT_COCKPIT_THEME }) => (
@@ -434,6 +471,14 @@ const CommandDeck = ({
   data,
   memoryResults,
   ollamaStatus,
+  commandCollapsed = false,
+  activityCollapsed = false,
+  deadManArmed = false,
+  deadManStep = 0,
+  deadManNotice = '',
+  onToggleCommandCollapsed,
+  onToggleActivityCollapsed,
+  onToggleLeftCollapsed,
   onCreateProject,
   onSelectProject,
   onLockWorkspace,
@@ -460,9 +505,58 @@ const CommandDeck = ({
     setDraftName('');
   };
 
+  const leftCollapsed = commandCollapsed && activityCollapsed;
+  const sequenceLabel = `${Math.min(deadManStep + 1, DEAD_MAN_SEQUENCE.length)}/${DEAD_MAN_SEQUENCE.length}`;
+
   return (
-    <aside className="min-h-0 space-y-3">
-      <Panel title="Command Deck" eyebrow="Control" icon={Database} theme={theme}>
+    <aside className={`min-h-0 space-y-3 ${leftCollapsed ? 'xl:w-14' : ''}`}>
+      {deadManArmed && !leftCollapsed ? (
+        <div className={`rounded-lg border px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] ${theme.warningTag}`}>
+          <div>Dead-man disarm / DM-CCW-01</div>
+          <div className="mt-1 normal-case tracking-normal text-amber-100/80">
+            {deadManNotice || 'Expand Intel Rail, then the left rail.'}
+          </div>
+        </div>
+      ) : null}
+
+      {deadManArmed && leftCollapsed ? (
+        <CollapsedSidePanel
+          label="Left Rail"
+          eyebrow="Control + Activity"
+          icon={Database}
+          armed={deadManArmed}
+          sequenceLabel={sequenceLabel}
+          onExpand={() => onToggleLeftCollapsed?.(false)}
+          theme={theme}
+        />
+      ) : commandCollapsed ? (
+        <CollapsedSidePanel
+          label="Control"
+          eyebrow="Deck"
+          icon={Database}
+          armed={deadManArmed}
+          sequenceLabel={sequenceLabel}
+          onExpand={() => onToggleCommandCollapsed?.(false)}
+          theme={theme}
+        />
+      ) : (
+        <Panel
+          title="Command Deck"
+          eyebrow="Control"
+          icon={Database}
+          theme={theme}
+          headerAction={(
+            <button
+              type="button"
+              onClick={() => onToggleCommandCollapsed?.(true)}
+              className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${theme.secondaryButton}`}
+              title="Collapse Command Deck"
+            >
+              <ChevronLeft size={12} />
+              Collapse
+            </button>
+          )}
+        >
         <div className="space-y-3">
           <label className="relative block">
             <select
@@ -497,6 +591,18 @@ const CommandDeck = ({
 
           <p className="text-xs leading-5 text-slate-500">{activeProject.summary || 'No project summary saved yet.'}</p>
 
+          <div className={`rounded-md border px-3 py-2.5 ${deadManArmed ? theme.warningTag : theme.subPanel}`}>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Defense</span>
+              <span className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${deadManArmed ? 'text-amber-100' : 'text-slate-400'}`}>
+                {deadManArmed ? 'True-Local' : 'Passive'}
+              </span>
+            </div>
+            <div className={`mt-1 text-xs ${deadManArmed ? 'text-amber-100/80' : 'text-slate-500'}`}>
+              {deadManArmed ? 'DM-CCW-01 armed. Expand Intel Rail, then Left Rail.' : 'Dead-man trigger is not armed.'}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-2">
             {[
               ['Memory', projectMemory.length],
@@ -521,8 +627,36 @@ const CommandDeck = ({
           </button>
         </div>
       </Panel>
+      )}
 
-      <Panel title="Recent Activity" eyebrow="Last captures" icon={Activity} theme={theme}>
+      {deadManArmed && leftCollapsed ? null : activityCollapsed ? (
+        <CollapsedSidePanel
+          label="Activity"
+          eyebrow="Captures"
+          icon={Activity}
+          armed={deadManArmed}
+          sequenceLabel={sequenceLabel}
+          onExpand={() => onToggleActivityCollapsed?.(false)}
+          theme={theme}
+        />
+      ) : (
+        <Panel
+          title="Recent Activity"
+          eyebrow="Last captures"
+          icon={Activity}
+          theme={theme}
+          headerAction={(
+            <button
+              type="button"
+              onClick={() => onToggleActivityCollapsed?.(true)}
+              className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${theme.secondaryButton}`}
+              title="Collapse Recent Activity"
+            >
+              <ChevronLeft size={12} />
+              Collapse
+            </button>
+          )}
+        >
         <div className="space-y-2">
           {recentMemory.length ? recentMemory.map((item) => (
             <div key={item.id} className={`rounded-md border px-3 py-2 ${theme.subPanel}`}>
@@ -532,6 +666,7 @@ const CommandDeck = ({
           )) : <GhostRows theme={theme} />}
         </div>
       </Panel>
+      )}
     </aside>
   );
 };
@@ -1355,6 +1490,8 @@ export const OrbitMenu = ({
   const projectMemoryCount = asList(data.memoryItems).filter((item) => item.projectId === activeProject.id).length;
   const state = getOperationalState({ mode, data, activeProject, ollamaStatus });
   const localOnly = data.settings?.localOnly ? 'LOCAL ONLY' : 'HYBRID';
+  const defenseArmed = Boolean(data.settings?.deadMansTriggerEnabled);
+  const centerState = defenseArmed ? 'TRUE-LOCAL' : state;
   const selected = DOCTRINES[selectedDoctrine] || DOCTRINES.operate;
   const selectedApps = orderedApps.filter((app) => app.doctrine === selectedDoctrine);
   const visibleAllApps = allOpen ? orderedApps : [];
@@ -1370,13 +1507,26 @@ export const OrbitMenu = ({
       <div className={`grid gap-3 ${compact ? '' : '2xl:grid-cols-[0.9fr_1.1fr]'}`}>
         <div className={`relative min-h-[17rem] overflow-hidden rounded-lg border ${theme.subPanel}`}>
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.055),transparent_44%)]" />
-          <div className="absolute left-1/2 top-1/2 grid h-32 w-32 -translate-x-1/2 -translate-y-1/2 rotate-45 place-items-center border border-white/12 bg-black/24 shadow-[0_0_38px_rgba(103,232,249,0.08)]">
+          <div
+            className={`absolute left-1/2 top-1/2 grid h-32 w-32 -translate-x-1/2 -translate-y-1/2 rotate-45 place-items-center border bg-black/24 shadow-[0_0_38px_rgba(103,232,249,0.08)] ${
+              defenseArmed ? 'border-amber-200/35' : 'border-white/12'
+            }`}
+          >
             <div className="-rotate-45 text-center">
               <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Doctrine</div>
               <div className={`mt-1 truncate text-sm font-semibold ${theme.heading}`}>{activeProject.name}</div>
-              <div className={`mt-2 inline-flex rounded border px-2 py-1 text-[10px] font-semibold tracking-[0.16em] ${theme.tag}`}>
-                {state}
+              <div
+                className={`mt-2 inline-flex rounded border px-2 py-1 text-[10px] font-semibold tracking-[0.16em] ${
+                  defenseArmed ? theme.warningTag : theme.tag
+                }`}
+              >
+                {centerState}
               </div>
+              {defenseArmed ? (
+                <div className="mt-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-amber-100/80">
+                  DM-CCW-01
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -1543,6 +1693,8 @@ const IntelligenceRail = ({
   activeProject,
   data,
   collapsed = false,
+  deadManArmed = false,
+  deadManNotice = '',
   onToggleCollapsed,
   theme = DEFAULT_COCKPIT_THEME,
 }) => {
@@ -1563,16 +1715,29 @@ const IntelligenceRail = ({
           onClick={onToggleCollapsed}
           title="Expand Intelligence Rail"
           aria-label="Expand Intelligence Rail"
-          className={`group flex h-full min-h-[18rem] w-full flex-col items-center justify-start gap-3 rounded-lg border px-2 py-4 transition ${theme.subPanelHover} focus:outline-none focus:ring-1 focus:ring-cyan-100/20`}
+          className={`group flex h-full min-h-[18rem] w-full flex-col items-center justify-start gap-3 rounded-lg border px-2 py-4 transition ${
+            deadManArmed ? 'border-amber-300/30 bg-amber-500/[0.08] text-amber-100 shadow-lg shadow-amber-950/20' : theme.subPanelHover
+          } focus:outline-none focus:ring-1 focus:ring-cyan-100/20`}
         >
-          <ChevronLeft size={16} className={theme.icon} />
-          <CircleDot size={15} className="text-slate-500 transition group-hover:text-cyan-100" />
-          <span className="mt-2 [writing-mode:vertical-rl] rotate-180 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 transition group-hover:text-slate-200">
-            Intelligence Rail
+          <ChevronLeft size={16} className={deadManArmed ? 'text-amber-200' : theme.icon} />
+          <CircleDot size={15} className={deadManArmed ? 'text-amber-200' : 'text-slate-500 transition group-hover:text-cyan-100'} />
+          <span
+            className={`mt-2 [writing-mode:vertical-rl] rotate-180 text-[10px] font-semibold uppercase tracking-[0.22em] transition ${
+              deadManArmed ? 'text-amber-100' : 'text-slate-500 group-hover:text-slate-200'
+            }`}
+          >
+            {deadManArmed ? 'Unavailable' : 'Intelligence Rail'}
           </span>
-          <span className={`mt-auto rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${theme.tag}`}>
-            {ollamaStatus.status || 'idle'}
+          <span
+            className={`mt-auto rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+              deadManArmed ? 'border-amber-300/25 bg-amber-500/10 text-amber-100' : theme.tag
+            }`}
+          >
+            {deadManArmed ? DEAD_MAN_MODE_ID : (ollamaStatus.status || 'idle')}
           </span>
+          {deadManArmed && deadManNotice ? (
+            <span className="sr-only">{deadManNotice}</span>
+          ) : null}
         </button>
       </aside>
     );
@@ -1683,9 +1848,11 @@ const ActiveModuleSurface = ({
   activeModuleApp,
   ActiveModuleComponent,
   previousSurface,
+  activeModuleView = 'default',
   onBackToSystemSurface,
   onOpenModuleWindow,
   onCloseActiveModule,
+  onSetActiveModuleView,
   theme = DEFAULT_COCKPIT_THEME,
   shellThemeId = 'black_glass',
 }) => {
@@ -1701,6 +1868,8 @@ const ActiveModuleSurface = ({
 
   const Icon = activeModuleApp.icon;
   const surfaceLabel = SURFACE_LABELS[previousSurface] || 'System Surface';
+  const isVaultNotes = activeModuleApp.appKey === 'notes';
+  const isNeuralNotes = isVaultNotes && activeModuleView === 'neural-notes';
 
   return (
     <section className={`flex h-[calc(100vh-15rem)] min-h-[32rem] flex-col overflow-hidden rounded-lg border shadow-2xl ${theme.panelPrimary}`}>
@@ -1739,6 +1908,18 @@ const ActiveModuleSurface = ({
             <ExternalLink size={14} />
             Open as Window
           </button>
+          {isVaultNotes ? (
+            <button
+              type="button"
+              onClick={() => onSetActiveModuleView?.(isNeuralNotes ? 'default' : 'neural-notes')}
+              className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] transition ${
+                isNeuralNotes ? theme.activeTab : theme.secondaryButton
+              }`}
+            >
+              <BrainCircuit size={14} />
+              Neural Notes
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onCloseActiveModule}
@@ -1755,8 +1936,11 @@ const ActiveModuleSurface = ({
           shellThemeId === 'black_glass' ? 'ros-black-glass-app' : ''
         }`}
       >
-        <div className="min-h-full">
-          <ActiveModuleComponent />
+        <div className="h-full min-h-full">
+          <ActiveModuleComponent
+            moduleView={activeModuleView}
+            onRequestDefaultView={() => onSetActiveModuleView?.('default')}
+          />
         </div>
       </div>
     </section>
@@ -1776,6 +1960,7 @@ const CenterWorkspace = ({
   onOpenModuleWindow,
   onBackToSystemSurface,
   onCloseActiveModule,
+  onSetActiveModuleView,
   ollamaStatus,
   setOllamaStatus,
   windows = [],
@@ -1787,9 +1972,11 @@ const CenterWorkspace = ({
         activeModuleApp={activeModuleApp}
         ActiveModuleComponent={ActiveModuleComponent}
         previousSurface={cockpitState.previousSurface}
+        activeModuleView={cockpitState.activeModuleView || 'default'}
         onBackToSystemSurface={onBackToSystemSurface}
         onOpenModuleWindow={onOpenModuleWindow}
         onCloseActiveModule={onCloseActiveModule}
+        onSetActiveModuleView={onSetActiveModuleView}
         shellThemeId={data.settings.theme}
         theme={theme}
       />
@@ -1845,7 +2032,9 @@ const OperatorCockpit = ({
   onOpenModuleWindow,
   onBackToSystemSurface,
   onCloseActiveModule,
+  onSetActiveModuleView,
   onLockWorkspace,
+  onDeadManTrigger,
   now: nowValue = new Date(),
   lan,
   windows = [],
@@ -1854,24 +2043,54 @@ const OperatorCockpit = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [mode, setMode] = useState('operate');
   const [railCollapsed, setRailCollapsed] = useState(false);
+  const [controlCollapsed, setControlCollapsed] = useState(false);
+  const [activityCollapsed, setActivityCollapsed] = useState(false);
+  const [deadManStep, setDeadManStep] = useState(0);
+  const [deadManNotice, setDeadManNotice] = useState('');
+  const [deadManWasArmed, setDeadManWasArmed] = useState(false);
   const [ollamaStatus, setOllamaStatus] = useState({
     status: data.settings.ai?.lastStatus || 'unknown',
     model: data.settings.ai?.model || '',
     models: [],
   });
   const activeProject = getActiveProject(data);
+  const deadManArmed = Boolean(data.settings.deadMansTriggerEnabled);
   const memoryResults = getProjectMemoryResults(data, searchQuery, {
     projectId: activeProject.id,
     includeLegacy: true,
     limit: 16,
   });
   const cockpitTheme = useMemo(() => getCockpitTheme(data.settings.theme), [data.settings.theme]);
-  const cockpitGridClass = railCollapsed
-    ? 'xl:grid-cols-[minmax(250px,0.78fr)_minmax(560px,3.12fr)_3.5rem]'
-    : 'xl:grid-cols-[minmax(250px,0.8fr)_minmax(560px,2.4fr)_minmax(250px,0.85fr)]';
+  const leftCollapsed = controlCollapsed && activityCollapsed;
+  const cockpitGridClass =
+    leftCollapsed && railCollapsed
+      ? 'xl:grid-cols-[3.5rem_minmax(560px,3.9fr)_3.5rem]'
+      : leftCollapsed
+        ? 'xl:grid-cols-[3.5rem_minmax(560px,3.12fr)_minmax(250px,0.85fr)]'
+        : railCollapsed
+          ? 'xl:grid-cols-[minmax(250px,0.78fr)_minmax(560px,3.12fr)_3.5rem]'
+          : 'xl:grid-cols-[minmax(250px,0.8fr)_minmax(560px,2.4fr)_minmax(250px,0.85fr)]';
   const aiBaseUrl = data.settings.ai?.ollamaBaseUrl;
   const aiModelName = data.settings.ai?.model;
   const aiSelectedModelId = data.settings.ai?.selectedModelId || DEFAULT_MODEL_ID;
+
+  useEffect(() => {
+    if (deadManArmed && !deadManWasArmed) {
+      setRailCollapsed(true);
+      setControlCollapsed(true);
+      setActivityCollapsed(true);
+      setDeadManStep(0);
+      setDeadManNotice(`Armed ${DEAD_MAN_MODE_ID}: expand Intel Rail, then the left rail.`);
+      setDeadManWasArmed(true);
+      return;
+    }
+
+    if (!deadManArmed && deadManWasArmed) {
+      setDeadManStep(0);
+      setDeadManNotice('');
+      setDeadManWasArmed(false);
+    }
+  }, [deadManArmed, deadManWasArmed]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1945,10 +2164,93 @@ const OperatorCockpit = ({
   ]);
 
   const appList = orderedApps?.length ? orderedApps : APP_ORDER.map((key) => ({ appKey: key, ...APPS[key] })).filter(Boolean);
+  const isDeadManSequencePartial = deadManArmed && deadManStep > 0 && deadManStep < DEAD_MAN_SEQUENCE.length;
   const handleOpenModule = (appKey) => {
+    if (isDeadManSequencePartial) {
+      triggerDeadManViolation(`Dead-man ${DEAD_MAN_MODE_ID}: module opened before the disarm sequence completed.`);
+      return;
+    }
+
     onOpenModule(appKey, mode);
   };
+  const triggerDeadManViolation = (reason) => {
+    setDeadManNotice(reason);
+    onDeadManTrigger?.(reason, {
+      action: 'lock',
+      modeId: DEAD_MAN_MODE_ID,
+    });
+  };
+  const registerDeadManPanelAction = (panelId, action) => {
+    if (!deadManArmed) {
+      return true;
+    }
+
+    if (action !== 'expand') {
+      triggerDeadManViolation(`Dead-man ${DEAD_MAN_MODE_ID}: ${panelId} collapsed during the disarm sequence.`);
+      return false;
+    }
+
+    const expectedPanelId = DEAD_MAN_SEQUENCE[deadManStep];
+
+    if (panelId !== expectedPanelId) {
+      triggerDeadManViolation(`Dead-man ${DEAD_MAN_MODE_ID}: expected ${expectedPanelId}, received ${panelId}.`);
+      return false;
+    }
+
+    if (deadManStep === DEAD_MAN_SEQUENCE.length - 1) {
+      updateWorkspaceData((current) => ({
+        ...current,
+        settings: {
+          ...current.settings,
+          deadMansTriggerEnabled: false,
+        },
+      }));
+      setDeadManStep(0);
+      setDeadManNotice('Dead-man trigger disarmed by cockpit sequence.');
+      return true;
+    }
+
+    setDeadManStep((current) => current + 1);
+    setDeadManNotice(`Step ${deadManStep + 1} accepted. Continue counter-clockwise.`);
+    return true;
+  };
+  const handleLeftCollapsedChange = (nextCollapsed) => {
+    if (!registerDeadManPanelAction('left', nextCollapsed ? 'collapse' : 'expand')) {
+      return;
+    }
+
+    setControlCollapsed(nextCollapsed);
+    setActivityCollapsed(nextCollapsed);
+  };
+  const handleRailCollapsedChange = (nextCollapsed) => {
+    if (!registerDeadManPanelAction('rail', nextCollapsed ? 'collapse' : 'expand')) {
+      return;
+    }
+
+    setRailCollapsed(nextCollapsed);
+  };
+  const handleControlCollapsedChange = (nextCollapsed) => {
+    if (deadManArmed) {
+      handleLeftCollapsedChange(nextCollapsed);
+      return;
+    }
+
+    setControlCollapsed(nextCollapsed);
+  };
+  const handleActivityCollapsedChange = (nextCollapsed) => {
+    if (deadManArmed) {
+      handleLeftCollapsedChange(nextCollapsed);
+      return;
+    }
+
+    setActivityCollapsed(nextCollapsed);
+  };
   const handleModeChange = (nextMode) => {
+    if (isDeadManSequencePartial) {
+      triggerDeadManViolation(`Dead-man ${DEAD_MAN_MODE_ID}: cockpit mode changed before the disarm sequence completed.`);
+      return;
+    }
+
     setMode(nextMode);
 
     if (cockpitState?.activeSurface === 'module') {
@@ -1998,6 +2300,14 @@ const OperatorCockpit = ({
             data={data}
             memoryResults={memoryResults}
             ollamaStatus={ollamaStatus}
+            commandCollapsed={controlCollapsed}
+            activityCollapsed={activityCollapsed}
+            deadManArmed={deadManArmed}
+            deadManStep={deadManStep}
+            deadManNotice={deadManNotice}
+            onToggleCommandCollapsed={handleControlCollapsedChange}
+            onToggleActivityCollapsed={handleActivityCollapsedChange}
+            onToggleLeftCollapsed={handleLeftCollapsedChange}
             onCreateProject={createProject}
             onSelectProject={setActiveProject}
             onLockWorkspace={onLockWorkspace}
@@ -2017,6 +2327,7 @@ const OperatorCockpit = ({
               onOpenModuleWindow={onOpenModuleWindow}
               onBackToSystemSurface={handleBackToSystemSurface}
               onCloseActiveModule={handleCloseActiveModule}
+              onSetActiveModuleView={onSetActiveModuleView}
               ollamaStatus={ollamaStatus}
               setOllamaStatus={setOllamaStatus}
               windows={windows}
@@ -2030,7 +2341,9 @@ const OperatorCockpit = ({
             activeProject={activeProject}
             data={data}
             collapsed={railCollapsed}
-            onToggleCollapsed={() => setRailCollapsed((current) => !current)}
+            deadManArmed={deadManArmed}
+            deadManNotice={deadManNotice}
+            onToggleCollapsed={() => handleRailCollapsedChange(!railCollapsed)}
             theme={cockpitTheme}
           />
         </div>

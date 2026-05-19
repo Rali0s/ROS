@@ -60,6 +60,24 @@ export const isNativeVaultRuntime = () => isLikelyTauriRuntime();
 
 export const getNativeVaultState = async () => invokeNative('get_vault_state');
 
+export const getNativeLicenseState = async () => invokeNative('get_license_state');
+
+export const installNativeLicenseKey = async ({ key }) =>
+  invokeNative('install_license_key', {
+    args: {
+      key,
+    },
+  });
+
+export const removeNativeLicense = async () => invokeNative('remove_license');
+
+export const checkNativeFeature = async ({ featureId }) =>
+  invokeNative('check_feature', {
+    args: {
+      featureId,
+    },
+  });
+
 export const initializeNativeWorkspace = async ({ passphrase, operatorProfile, workspace }) =>
   invokeNative('initialize_workspace', {
     args: {

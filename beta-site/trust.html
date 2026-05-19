@@ -23,36 +23,47 @@
         </nav>
       </div>
     </header>
+
     <main class="site-shell">
       <section class="panel">
         <div class="eyebrow">Trust posture</div>
-        <div class="section-title">Backups, recovery, and the native vault are first-class.</div>
+        <div class="section-title">Encrypted at rest. Decrypted for the session. Local by default.</div>
         <p>
-          ROS Beta is built around a local-first desktop trust boundary. The app expects you to understand your
-          backup path, run restore validation, and use Control Room to keep the system healthy.
+          ROS Beta is built around a local desktop trust boundary. Unlocking decrypts the workspace into memory
+          for the active session. The passphrase is not stored, and core workflows do not require a cloud account.
         </p>
       </section>
+
       <section class="panel">
         <dl class="kv">
           <div>
-            <dt>Backup export</dt>
-            <dd>Encrypted snapshot export from Control Room</dd>
+            <dt>Workspace storage</dt>
+            <dd>Local encrypted workspace container</dd>
           </div>
           <div>
-            <dt>Backup drill</dt>
-            <dd>Dry-run restore validation without replacing the active workspace</dd>
+            <dt>Unlock behavior</dt>
+            <dd>Decrypts into memory for the current session</dd>
+          </div>
+          <div>
+            <dt>Model workflow</dt>
+            <dd>Local model runtime when available; manual capture otherwise</dd>
+          </div>
+          <div>
+            <dt>Backup export</dt>
+            <dd>Encrypted snapshot export from Control Room</dd>
           </div>
           <div>
             <dt>Support bundle</dt>
             <dd>Sanitized beta diagnostics for issue reporting</dd>
           </div>
           <div>
-            <dt>Native desktop</dt>
-            <dd>Tauri runtime with native vault posture</dd>
+            <dt>Appliance direction</dt>
+            <dd>Future ROS node image uses vendor Linux base, not a custom kernel distro</dd>
           </div>
         </dl>
       </section>
     </main>
+
     <footer class="footer">
       <div class="site-shell footer-inner">
         <div class="footer-links">

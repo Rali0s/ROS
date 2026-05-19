@@ -56,11 +56,13 @@ import {
 } from './utils/workspaceStore.js';
 import {
   closeNativeApp,
+  getNativeLicenseState,
   isNativeVaultRuntime,
   syncNativeWindowPresentation,
   watchNativeWindowPresentation,
 } from './utils/nativeVault.js';
 import { APP_RELEASE } from './utils/betaRuntime.js';
+import { getTierBadgeClass, normalizeLicenseState } from './utils/entitlements.js';
 
 const COMPONENT_MAP = {
   OverviewApp,
@@ -87,6 +89,7 @@ const DEFAULT_COCKPIT_STATE = {
   activeSurface: 'system',
   activeModuleId: null,
   previousSurface: null,
+  activeModuleView: 'default',
 };
 
 const WINDOW_Z_BASE = 20;
@@ -200,6 +203,7 @@ const LockScreen = ({
   setConfirmPassphrase,
   onSubmit,
   onSkipMigration,
+  licenseState,
 }) => {
   const authAssets = getAuthScreenAssets(boot?.theme);
   const backgroundImage = lifecycle === 'locked' ? authAssets.lockImage : authAssets.loginImage;
@@ -312,6 +316,9 @@ const LockScreen = ({
                 <Shield size={12} />
                 Local encrypted workspace
               </div>
+              <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] ${getTierBadgeClass(licenseState)}`}>
+                {licenseState.label}
+              </div>
             </div>
             <h1 className="mt-5 text-[2.1rem] font-semibold tracking-tight text-white">OSA-Midnight Oil</h1>
             <p className={`mt-3 max-w-xl text-sm leading-6 ${midnightOilMode ? 'text-amber-50/76' : 'text-cyan-50/78'}`}>
@@ -325,6 +332,7 @@ const LockScreen = ({
               {[
                 ['Operator', boot.operator],
                 ['Storage', 'Local only'],
+                ['License', licenseState.label],
                 ['Workspace', workspaceStatus],
                 ['Network', 'Offline capable'],
               ].map(([label, value]) => (
@@ -430,6 +438,12 @@ const LockScreen = ({
               <p className="text-xs leading-5 text-slate-500">
                 The passphrase is not stored. Inactivity will lock the workspace again.
               </p>
+
+              {licenseState.warning ? (
+                <div className="rounded-2xl border border-amber-400/16 bg-amber-500/10 px-4 py-3 text-xs leading-5 text-amber-100">
+                  {licenseState.warning}
+                </div>
+              ) : null}
 
               {lifecycle === 'migration' && backend === 'tauri-native' && onSkipMigration ? (
                 <button
@@ -552,6 +566,7 @@ const App = () => {
   const [accessError, setAccessError] = useState('');
   const [bootElapsedMs, setBootElapsedMs] = useState(0);
   const [exitBusy, setExitBusy] = useState(false);
+  const [licenseState, setLicenseState] = useState(normalizeLicenseState(null));
   const launchTrackedRef = useRef(false);
   const mainRef = useRef(null);
   const dragInfo = useRef({
@@ -572,6 +587,32 @@ const App = () => {
     const timer = window.setInterval(() => setTime(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshLicense = async () => {
+      if (!isNativeVaultRuntime()) {
+        setLicenseState(normalizeLicenseState(null));
+        return;
+      }
+
+      const next = await getNativeLicenseState();
+      if (!cancelled) {
+        setLicenseState(normalizeLicenseState(next));
+      }
+    };
+
+    refreshLicense().catch(() => {
+      if (!cancelled) {
+        setLicenseState(normalizeLicenseState(null));
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session.lifecycle]);
 
   useEffect(() => {
     if (!isNativeVaultRuntime()) {
@@ -851,6 +892,7 @@ const App = () => {
       activeSurface: 'module',
       activeModuleId: appKey,
       previousSurface,
+      activeModuleView: 'default',
     });
   };
 
@@ -864,6 +906,13 @@ const App = () => {
 
   const handleCloseActiveModule = () => {
     setCockpitState(DEFAULT_COCKPIT_STATE);
+  };
+
+  const handleSetActiveModuleView = (activeModuleView = 'default') => {
+    setCockpitState((current) => ({
+      ...current,
+      activeModuleView,
+    }));
   };
 
   const activeModuleApp = cockpitState.activeModuleId
@@ -904,6 +953,23 @@ const App = () => {
     setConfirmPassphrase('');
   };
 
+  const executeDeadManAction = (notice = 'Dead-man trigger action executed.', options = {}) => {
+    setMenuOpen(false);
+    setActiveWindowId(null);
+    setWindows([]);
+    setEntryMode(true);
+    setCockpitState(DEFAULT_COCKPIT_STATE);
+
+    const action = options.action === 'nuke' ? 'nuke' : 'lock';
+
+    if (action === 'lock') {
+      lockWorkspace(notice, { skipSnapshot: true });
+      return;
+    }
+
+    nukeWorkspaceData().catch(() => {});
+  };
+
   const closeWindow = (windowId, event) => {
     event.stopPropagation();
     const remaining = windows.filter((windowItem) => windowItem.id !== windowId);
@@ -912,15 +978,9 @@ const App = () => {
     setWindows(remaining);
 
     if (shouldTriggerDeadMan) {
-      setMenuOpen(false);
-      setActiveWindowId(null);
-
-      if (data.settings.sessionDefenseLastWindowAction === 'lock') {
-        lockWorkspace('Dead-man trigger locked the workspace because the final window was closed.');
-      } else {
-        nukeWorkspaceData().catch(() => {});
-      }
-
+      executeDeadManAction('Dead-man trigger locked the workspace because the final window was closed.', {
+        action: data.settings.sessionDefenseLastWindowAction,
+      });
       return;
     }
 
@@ -1162,6 +1222,7 @@ const App = () => {
                 setConfirmPassphrase('');
                 skipLegacyMigration();
               }}
+              licenseState={licenseState}
             />
           ) : (
             <>
@@ -1271,7 +1332,14 @@ const App = () => {
                     onOpenModuleWindow={openAppWindow}
                     onBackToSystemSurface={handleBackToSystemSurface}
                     onCloseActiveModule={handleCloseActiveModule}
+                    onSetActiveModuleView={handleSetActiveModuleView}
                     onLockWorkspace={() => handleLockWorkspace('Workspace locked from the command deck.')}
+                    onDeadManTrigger={(reason, options = {}) => {
+                      const action = options.action || data.settings.sessionDefenseLastWindowAction;
+                      executeDeadManAction(action === 'lock' ? `${reason} Workspace locked.` : reason, {
+                        action,
+                      });
+                    }}
                     now={time}
                     lan={data.lan}
                     windows={windows}

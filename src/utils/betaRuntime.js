@@ -59,11 +59,23 @@ export const getAccountStatus = (settings = {}) => ({
   installId: getOrCreateInstallId(),
 });
 
-export const getEntitlementStatus = () => ({
-  state: 'beta-free',
-  label: 'Free beta access',
-  futureTier: 'solo',
-});
+export const getEntitlementStatus = (licenseState = null) => {
+  if (licenseState?.label) {
+    return {
+      state: licenseState.status || 'individual',
+      label: licenseState.label,
+      futureTier: licenseState.tier || 'individual',
+      warning: licenseState.warning || '',
+    };
+  }
+
+  return {
+    state: 'individual',
+    label: 'Individual ROS',
+    futureTier: 'individual',
+    warning: 'Native license validation is unavailable in this runtime.',
+  };
+};
 
 export const getReleaseStatus = (session = {}) => ({
   ...APP_RELEASE,
@@ -167,9 +179,9 @@ export const getWorkspaceHealth = ({ data, session, fileVaultEntries = [] }) => 
   };
 };
 
-export const buildSupportBundle = ({ data, session, fileVaultEntries = [], feedbackDraft = '' }) => {
+export const buildSupportBundle = ({ data, session, fileVaultEntries = [], feedbackDraft = '', licenseState = null }) => {
   const accountStatus = getAccountStatus(data?.settings);
-  const entitlementStatus = getEntitlementStatus();
+  const entitlementStatus = getEntitlementStatus(licenseState);
   const releaseStatus = getReleaseStatus(session);
   const health = getWorkspaceHealth({ data, session, fileVaultEntries });
   const betaSignals = getBetaSignals(data?.settings);

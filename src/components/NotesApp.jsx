@@ -1,6 +1,8 @@
 /* eslint-disable react/prop-types */
 import { useEffect, useMemo, useState } from 'react';
 import {
+  ArrowLeft,
+  BrainCircuit,
   Eye,
   FilePlus2,
   LayoutList,
@@ -357,9 +359,162 @@ const sortNotes = (notes) =>
     return new Date(right.updatedAt) - new Date(left.updatedAt);
   });
 
-const NotesApp = () => {
+const getClusterLabel = (note) => note.tags?.[0] || note.category || 'published';
+
+const NOTE_ORBIT = [
+  { marginTop: '0.5rem', transform: 'translateY(0) rotate(-1deg)' },
+  { marginTop: '2.5rem', transform: 'translateY(10px) rotate(1.2deg)' },
+  { marginTop: '1rem', transform: 'translateY(-6px) rotate(0.4deg)' },
+  { marginTop: '3.25rem', transform: 'translateY(14px) rotate(-0.8deg)' },
+  { marginTop: '0rem', transform: 'translateY(-10px) rotate(1deg)' },
+  { marginTop: '2rem', transform: 'translateY(8px) rotate(-1.2deg)' },
+];
+
+const NeuralNotesSurface = ({ pinnedNotes, theme, selectedNoteId, onSelectNote, onBackToCloud }) => {
+  const selectedNote = pinnedNotes.find((note) => note.id === selectedNoteId) || null;
+  const clusters = useMemo(() => {
+    const grouped = new Map();
+
+    pinnedNotes.forEach((note) => {
+      const label = getClusterLabel(note);
+      if (!grouped.has(label)) {
+        grouped.set(label, []);
+      }
+      grouped.get(label).push(note);
+    });
+
+    return [...grouped.entries()].map(([label, notes]) => ({
+      label,
+      notes: sortNotes(notes),
+    }));
+  }, [pinnedNotes]);
+  const cloudNotes = useMemo(
+    () =>
+      clusters.flatMap((cluster, clusterIndex) =>
+        cluster.notes.map((note) => ({
+          ...note,
+          clusterIndex,
+          clusterLabel: cluster.label,
+        })),
+      ),
+    [clusters],
+  );
+
+  if (selectedNote) {
+    return (
+      <div className={`flex h-full min-h-0 flex-col ${theme.pageBg} text-slate-100`}>
+        <div className={`flex flex-wrap items-center justify-between gap-3 border-b ${theme.sidebarBorder} px-6 py-4`}>
+          <div>
+            <div className="text-xs uppercase tracking-[0.24em] text-slate-500">Published note</div>
+            <div className="mt-1 flex items-center gap-2 text-lg font-semibold text-white">
+              <BrainCircuit size={18} className={theme.accentText} />
+              Neural Notes Reader
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onBackToCloud}
+            className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${theme.secondaryButton}`}
+          >
+            <ArrowLeft size={16} />
+            Back to Neural Notes
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          <article className={`mx-auto max-w-4xl space-y-4 rounded-3xl border ${theme.panelBorder} ${theme.panelBg} p-8 shadow-2xl shadow-black/20`}>
+            <NotePreviewHeader note={selectedNote} theme={theme} />
+            {renderMarkdown(selectedNote.body, theme)}
+          </article>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex h-full min-h-0 flex-col overflow-hidden ${theme.pageBg} text-slate-100`}>
+      <div className={`border-b ${theme.sidebarBorder} px-6 py-5`}>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
+              <BrainCircuit size={15} className={theme.accentText} />
+              Published Notes
+            </div>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white">Neural Notes</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+              Pinned notes arranged as a quiet title cloud. Hover a title for tags, then open the article without the editor rail.
+            </p>
+          </div>
+          <div className={`rounded-2xl border px-4 py-3 text-right ${theme.panelBorder} ${theme.previewBg}`}>
+            <div className="text-2xl font-semibold text-white">{pinnedNotes.length}</div>
+            <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500">Pinned / published</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-6">
+        {pinnedNotes.length ? (
+          <div className="mx-auto flex min-h-[26rem] max-w-6xl flex-wrap items-center justify-center gap-x-5 gap-y-7 overflow-visible px-4 pb-16 pt-8">
+            {cloudNotes.map((note, noteIndex) => {
+              const orbit = NOTE_ORBIT[(noteIndex + note.clusterIndex) % NOTE_ORBIT.length];
+
+              return (
+                <div
+                  key={note.id}
+                  className="group relative overflow-visible"
+                  style={{
+                    ...orbit,
+                    transform: `${orbit.transform} translateX(${note.clusterIndex % 2 === 0 ? '-8px' : '10px'})`,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onSelectNote(note.id)}
+                    className={`max-w-[18rem] rounded-full border px-4 py-2 text-left text-sm font-semibold leading-snug text-white shadow-lg shadow-black/10 transition duration-200 hover:border-cyan-200/50 hover:bg-white/[0.08] focus:outline-none focus:ring-2 focus:ring-cyan-200/30 ${theme.card}`}
+                  >
+                    {note.title}
+                  </button>
+
+                  <div
+                    className={`pointer-events-none absolute left-1/2 top-full z-30 mt-3 w-64 -translate-x-1/2 rounded-2xl border p-3 text-left opacity-0 shadow-2xl shadow-black/30 transition duration-150 group-hover:translate-y-1 group-hover:opacity-100 group-focus-within:translate-y-1 group-focus-within:opacity-100 ${theme.panelBorder} ${theme.panelBg}`}
+                  >
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                      {note.clusterLabel} / {formatUpdatedDate(note.updatedAt)}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {note.tags.length ? (
+                        note.tags.map((tag) => (
+                          <span key={`${note.id}-neural-${tag}`} className={`rounded-full border px-2 py-0.5 text-[10px] ${theme.tag}`}>
+                            #{tag}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs text-slate-500">No tags</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className={`mx-auto mt-16 max-w-xl rounded-3xl border border-dashed ${theme.panelBorder} ${theme.panelBg} p-8 text-center`}>
+            <BrainCircuit size={28} className={`mx-auto ${theme.accentText}`} />
+            <h2 className="mt-4 text-xl font-semibold text-white">Pin notes to publish them into Neural Notes.</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-400">
+              Use the Pin control in Vault Notes to send article-worthy notes into this full-pane published surface.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const NotesApp = ({ moduleView = 'default' }) => {
   const { data, session, updateWorkspaceData, clearWorkspaceNavigation } = useWorkspaceData();
   const [selectedNoteId, setSelectedNoteId] = useState(data.notes[0]?.id ?? null);
+  const [neuralSelectedNoteId, setNeuralSelectedNoteId] = useState(null);
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState('edit');
   const [activeTag, setActiveTag] = useState('all');
@@ -404,6 +559,7 @@ const NotesApp = () => {
 
   const selectedNote =
     data.notes.find((note) => note.id === selectedNoteId) ?? filteredNotes[0] ?? sortNotes(data.notes)[0] ?? null;
+  const pinnedNotes = useMemo(() => sortNotes(data.notes.filter((note) => note.pinned)), [data.notes]);
 
   const updateNote = (patch) => {
     if (!selectedNote) {
@@ -471,6 +627,18 @@ const NotesApp = () => {
       };
     });
   };
+
+  if (moduleView === 'neural-notes') {
+    return (
+      <NeuralNotesSurface
+        pinnedNotes={pinnedNotes}
+        theme={theme}
+        selectedNoteId={neuralSelectedNoteId}
+        onSelectNote={setNeuralSelectedNoteId}
+        onBackToCloud={() => setNeuralSelectedNoteId(null)}
+      />
+    );
+  }
 
   return (
     <div className={`flex h-full ${theme.pageBg} text-slate-100`}>
