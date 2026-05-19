@@ -1,0 +1,27 @@
+{
+  "id": "huggingface-llm",
+  "displayName": "Hugging Face LLM / Modular Adapter",
+  "friendlyName": "Hugging Face LLM",
+  "technicalName": "ros-hf-custom:latest",
+  "type": "modular",
+  "role": "user-supplied-huggingface-model",
+  "runtime": "ollama-compatible",
+  "runtimeModel": "ros-hf-custom:latest",
+  "baseModel": "hf.co/<owner>/<model>",
+  "acceptedSources": [
+    "owner/model",
+    "hf.co/<owner>/<model>",
+    "hf.co/<owner>/<gguf-repo>:<quant>",
+    "https://huggingface.co/<owner>/<model>/tree/main"
+  ],
+  "presetCatalog": "HUGGINGFACE_GGUF_PRESETS_WITH_DOWNLOAD_SIZES",
+  "artifactStatus": "user-configured",
+  "blueprintSource": "huggingface-user-supplied",
+  "description": "Modular adapter for a user-supplied Hugging Face model reference. ROS creates a local Ollama-compatible alias and runs it through the same model workspace structure as native model cards.",
+  "capabilities": [
+    "HF model import",
+    "Local alias",
+    "Context chat",
+    "Reusable profile"
+  ]
+}

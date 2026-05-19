@@ -47,6 +47,11 @@ Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before
 ROS is moving toward a model-first local AI experience. Regular users should see model cards and plain-language capabilities, not raw API setup.
 
 - `Security Model v1 / DNS-v1`: a defensive review model for risk summaries, alert explanation, evidence review, and safer next steps.
+- `Citizen-AI`: a lab-only defensive training model for bias review, verification coaching, and after-action summaries.
+- `Hugging Face LLM`: a modular adapter that lets operators add a Hugging Face model reference, create a local alias, download it through the local runtime, and run it against ROS project memory.
+- Hugging Face sources may be entered as `owner/model`, `hf.co/owner/model`, or full repo URLs such as `https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/tree/main`; ROS normalizes repo URLs to the local runtime form `hf.co/deepseek-ai/DeepSeek-V4-Flash`.
+- The Hugging Face adapter includes a curated GGUF preset picker for local-runtime-ready repos, including compact Llama/Qwen/Mistral options and DeepSeek GGUF alternatives.
+- GGUF presets show approximate local download size in GB; Prepare downloads through the local Ollama-compatible runtime into the local model store.
 - The first integration phase includes the model catalog and a placeholder bundled-model manifest.
 - The actual DNS-v1 model artifact is not included yet.
 - Developer and AI-builder settings live behind Advanced setup, where local endpoints and technical model names remain available.

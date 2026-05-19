@@ -63,7 +63,14 @@ import {
   normalizeBpsScore,
   normalizeBpsSubject,
 } from './bpsEngine';
-import { DEFAULT_MODEL_ID, MODEL_STATUS, createDefaultModelStatus } from './modelCatalog';
+import {
+  DEFAULT_HUGGINGFACE_MODEL_CONFIG,
+  DEFAULT_MODEL_ID,
+  HUGGINGFACE_MODEL_ID,
+  MODEL_STATUS,
+  createDefaultModelStatus,
+  getHuggingFaceModelConfig,
+} from './modelCatalog';
 
 const STORAGE_KEY = 'osa-midnight-oil.workspace';
 const CHANGE_EVENT = 'osa-midnight-oil.workspace.change';
@@ -178,8 +185,12 @@ const createSettings = () => ({
     ollamaBaseUrl: 'http://localhost:11434',
     model: '',
     lastStatus: 'unknown',
+    huggingFace: {
+      ...DEFAULT_HUGGINGFACE_MODEL_CONFIG,
+    },
     modelStatuses: {
       [DEFAULT_MODEL_ID]: createDefaultModelStatus(),
+      [HUGGINGFACE_MODEL_ID]: createDefaultModelStatus(),
     },
   },
 });
@@ -1018,6 +1029,7 @@ const normalizeModelStatuses = (statuses = {}) => {
       return accumulator;
     }, {}),
     [DEFAULT_MODEL_ID]: normalizeModelStatus(next[DEFAULT_MODEL_ID]),
+    [HUGGINGFACE_MODEL_ID]: normalizeModelStatus(next[HUGGINGFACE_MODEL_ID]),
   };
 };
 
@@ -1918,6 +1930,7 @@ const normalizeWorkspace = (workspace) => {
             ? next.settings.ai.ollamaBaseUrl
             : createSettings().ai.ollamaBaseUrl,
         model: typeof next.settings?.ai?.model === 'string' ? next.settings.ai.model : '',
+        huggingFace: getHuggingFaceModelConfig(next.settings?.ai),
         lastStatus:
           typeof next.settings?.ai?.lastStatus === 'string' && next.settings.ai.lastStatus.trim()
             ? next.settings.ai.lastStatus

@@ -5,6 +5,15 @@ const normalizeBaseUrl = (value) => {
   return trimmed ? trimmed.replace(/\/+$/, '') : DEFAULT_OLLAMA_BASE_URL;
 };
 
+const readErrorResponse = async (response) => {
+  try {
+    const text = await response.text();
+    return text.trim();
+  } catch {
+    return '';
+  }
+};
+
 export const normalizeOllamaBaseUrl = normalizeBaseUrl;
 
 export const checkOllamaStatus = async ({ baseUrl, model } = {}) => {
@@ -17,7 +26,8 @@ export const checkOllamaStatus = async ({ baseUrl, model } = {}) => {
   });
 
   if (!response.ok) {
-    throw new Error(`Local model service responded with ${response.status}`);
+    const detail = await readErrorResponse(response);
+    throw new Error(`Local model service responded with ${response.status}${detail ? `: ${detail}` : ''}`);
   }
 
   const payload = await response.json();
@@ -93,7 +103,8 @@ export const chatWithOllama = async ({
   });
 
   if (!response.ok) {
-    throw new Error(`Local model request failed with ${response.status}`);
+    const detail = await readErrorResponse(response);
+    throw new Error(`Local model request failed with ${response.status}${detail ? `: ${detail}` : ''}`);
   }
 
   const payload = await response.json();
@@ -126,7 +137,8 @@ export const pullOllamaModel = async ({ baseUrl, model }) => {
   });
 
   if (!response.ok) {
-    throw new Error(`Local model prepare failed with ${response.status}`);
+    const detail = await readErrorResponse(response);
+    throw new Error(`Local model prepare failed with ${response.status}${detail ? `: ${detail}` : ''}`);
   }
 
   return response.json();
@@ -158,7 +170,8 @@ export const createOllamaModel = async ({ baseUrl, model, modelfile }) => {
   });
 
   if (!response.ok) {
-    throw new Error(`Local model prepare failed with ${response.status}`);
+    const detail = await readErrorResponse(response);
+    throw new Error(`Local model prepare failed with ${response.status}${detail ? `: ${detail}` : ''}`);
   }
 
   return response.json();

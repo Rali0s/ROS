@@ -30,10 +30,14 @@ import {
 import { APP_ORDER, APPS, getAppInteriorTheme, getShellTheme } from '../utils/constants';
 import {
   DEFAULT_MODEL_ID,
+  HUGGINGFACE_GGUF_PRESETS,
+  HUGGINGFACE_MODEL_ID,
   MODEL_CATALOG,
   MODEL_STATUS,
   MODEL_STATUS_LABELS,
   getModelById,
+  getHuggingFaceModelConfig,
+  getHuggingFaceSourceDetails,
 } from '../utils/modelCatalog';
 import {
   buildModelRequestContext,
@@ -379,38 +383,6 @@ const Panel = ({
   </section>
 );
 
-const CollapsedSidePanel = ({
-  label,
-  eyebrow,
-  icon: Icon,
-  onExpand,
-  armed = false,
-  sequenceLabel = '',
-  theme = DEFAULT_COCKPIT_THEME,
-}) => (
-  <button
-    type="button"
-    onClick={onExpand}
-    className={`group flex min-h-[12rem] w-full flex-col items-center justify-between rounded-lg border px-2 py-3 transition ${
-      armed ? 'border-amber-300/25 bg-amber-500/[0.08] text-amber-100' : theme.subPanelHover
-    } focus:outline-none focus:ring-1 focus:ring-cyan-100/20`}
-    title={`Expand ${label}`}
-    aria-label={`Expand ${label}`}
-  >
-    <ChevronRight size={15} className={armed ? 'text-amber-200' : theme.icon} />
-    {Icon ? <Icon size={16} className={armed ? 'text-amber-200' : 'text-slate-500 transition group-hover:text-cyan-100'} /> : null}
-    <span className="mt-2 [writing-mode:vertical-rl] rotate-180 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400 transition group-hover:text-slate-100">
-      {label}
-    </span>
-    <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-600">{eyebrow}</span>
-    {armed ? (
-      <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-1.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-amber-100">
-        {sequenceLabel}
-      </span>
-    ) : null}
-  </button>
-);
-
 const ModeTabs = ({ mode, onModeChange, theme = DEFAULT_COCKPIT_THEME }) => (
   <div className={`flex flex-wrap items-center gap-1 rounded-lg border p-1 ${theme.subPanel}`}>
     {MODES.map((entry) => (
@@ -471,13 +443,9 @@ const CommandDeck = ({
   data,
   memoryResults,
   ollamaStatus,
-  commandCollapsed = false,
-  activityCollapsed = false,
+  leftCollapsed = false,
   deadManArmed = false,
-  deadManStep = 0,
   deadManNotice = '',
-  onToggleCommandCollapsed,
-  onToggleActivityCollapsed,
   onToggleLeftCollapsed,
   onCreateProject,
   onSelectProject,
@@ -505,12 +473,45 @@ const CommandDeck = ({
     setDraftName('');
   };
 
-  const leftCollapsed = commandCollapsed && activityCollapsed;
-  const sequenceLabel = `${Math.min(deadManStep + 1, DEAD_MAN_SEQUENCE.length)}/${DEAD_MAN_SEQUENCE.length}`;
+  if (leftCollapsed) {
+    return (
+      <aside className="min-h-0">
+        <button
+          type="button"
+          onClick={() => onToggleLeftCollapsed?.(false)}
+          title="Expand Left Rail"
+          aria-label="Expand Left Rail"
+          className={`group flex h-full min-h-[18rem] w-full flex-col items-center justify-start gap-3 rounded-lg border px-2 py-4 transition ${
+            deadManArmed ? 'border-amber-300/30 bg-amber-500/[0.08] text-amber-100 shadow-lg shadow-amber-950/20' : theme.subPanelHover
+          } focus:outline-none focus:ring-1 focus:ring-cyan-100/20`}
+        >
+          <ChevronRight size={16} className={deadManArmed ? 'text-amber-200' : theme.icon} />
+          <Database size={15} className={deadManArmed ? 'text-amber-200' : 'text-slate-500 transition group-hover:text-cyan-100'} />
+          <span
+            className={`mt-2 [writing-mode:vertical-rl] rotate-180 text-[10px] font-semibold uppercase tracking-[0.22em] transition ${
+              deadManArmed ? 'text-amber-100' : 'text-slate-500 group-hover:text-slate-200'
+            }`}
+          >
+            {deadManArmed ? 'Unavailable' : 'Left Rail'}
+          </span>
+          <span
+            className={`mt-auto rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+              deadManArmed ? 'border-amber-300/25 bg-amber-500/10 text-amber-100' : theme.tag
+            }`}
+          >
+            {deadManArmed ? DEAD_MAN_MODE_ID : 'Control'}
+          </span>
+          {deadManArmed && deadManNotice ? (
+            <span className="sr-only">{deadManNotice}</span>
+          ) : null}
+        </button>
+      </aside>
+    );
+  }
 
   return (
-    <aside className={`min-h-0 space-y-3 ${leftCollapsed ? 'xl:w-14' : ''}`}>
-      {deadManArmed && !leftCollapsed ? (
+    <aside className="min-h-0 space-y-3">
+      {deadManArmed ? (
         <div className={`rounded-lg border px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.18em] ${theme.warningTag}`}>
           <div>Dead-man disarm / DM-CCW-01</div>
           <div className="mt-1 normal-case tracking-normal text-amber-100/80">
@@ -519,45 +520,26 @@ const CommandDeck = ({
         </div>
       ) : null}
 
-      {deadManArmed && leftCollapsed ? (
-        <CollapsedSidePanel
-          label="Left Rail"
-          eyebrow="Control + Activity"
-          icon={Database}
-          armed={deadManArmed}
-          sequenceLabel={sequenceLabel}
-          onExpand={() => onToggleLeftCollapsed?.(false)}
-          theme={theme}
-        />
-      ) : commandCollapsed ? (
-        <CollapsedSidePanel
-          label="Control"
-          eyebrow="Deck"
-          icon={Database}
-          armed={deadManArmed}
-          sequenceLabel={sequenceLabel}
-          onExpand={() => onToggleCommandCollapsed?.(false)}
-          theme={theme}
-        />
-      ) : (
-        <Panel
-          title="Command Deck"
-          eyebrow="Control"
-          icon={Database}
-          theme={theme}
-          headerAction={(
-            <button
-              type="button"
-              onClick={() => onToggleCommandCollapsed?.(true)}
-              className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${theme.secondaryButton}`}
-              title="Collapse Command Deck"
-            >
-              <ChevronLeft size={12} />
-              Collapse
-            </button>
-          )}
+      <div className="flex justify-start">
+        <button
+          type="button"
+          onClick={() => onToggleLeftCollapsed?.(true)}
+          title="Collapse Left Rail"
+          aria-label="Collapse Left Rail"
+          className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] transition ${theme.secondaryButton}`}
         >
+          <ChevronLeft size={14} />
+          Collapse rail
+        </button>
+      </div>
+
+      <Panel title="Left Rail" eyebrow="Control / Last activity" icon={Database} theme={theme}>
         <div className="space-y-3">
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            <Database size={13} className={theme.icon} />
+            Command Deck
+          </div>
+
           <label className="relative block">
             <select
               value={activeProject.id}
@@ -625,48 +607,23 @@ const CommandDeck = ({
             <Lock size={15} />
             Lock workspace
           </button>
-        </div>
-      </Panel>
-      )}
 
-      {deadManArmed && leftCollapsed ? null : activityCollapsed ? (
-        <CollapsedSidePanel
-          label="Activity"
-          eyebrow="Captures"
-          icon={Activity}
-          armed={deadManArmed}
-          sequenceLabel={sequenceLabel}
-          onExpand={() => onToggleActivityCollapsed?.(false)}
-          theme={theme}
-        />
-      ) : (
-        <Panel
-          title="Recent Activity"
-          eyebrow="Last captures"
-          icon={Activity}
-          theme={theme}
-          headerAction={(
-            <button
-              type="button"
-              onClick={() => onToggleActivityCollapsed?.(true)}
-              className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${theme.secondaryButton}`}
-              title="Collapse Recent Activity"
-            >
-              <ChevronLeft size={12} />
-              Collapse
-            </button>
-          )}
-        >
-        <div className="space-y-2">
-          {recentMemory.length ? recentMemory.map((item) => (
-            <div key={item.id} className={`rounded-md border px-3 py-2 ${theme.subPanel}`}>
-              <div className="truncate text-xs font-semibold text-slate-200">{item.title}</div>
-              <div className={`mt-1 text-[10px] uppercase tracking-[0.18em] ${theme.accent}`}>{item.kind}</div>
+          <div className={`border-t pt-3 ${theme.divider}`}>
+            <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+              <Activity size={13} className={theme.icon} />
+              Last activity
             </div>
-          )) : <GhostRows theme={theme} />}
+            <div className="space-y-2">
+              {recentMemory.length ? recentMemory.map((item) => (
+                <div key={item.id} className={`rounded-md border px-3 py-2 ${theme.subPanel}`}>
+                  <div className="truncate text-xs font-semibold text-slate-200">{item.title}</div>
+                  <div className={`mt-1 text-[10px] uppercase tracking-[0.18em] ${theme.accent}`}>{item.kind}</div>
+                </div>
+              )) : <GhostRows theme={theme} />}
+            </div>
+          </div>
         </div>
       </Panel>
-      )}
     </aside>
   );
 };
@@ -785,6 +742,17 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
   const aiSettings = data.settings.ai || {};
   const selectedModelId = aiSettings.selectedModelId || DEFAULT_MODEL_ID;
   const selectedModel = getModelById(selectedModelId);
+  const huggingFaceConfig = getHuggingFaceModelConfig(aiSettings);
+  const isHuggingFaceSelected = selectedModel.id === HUGGINGFACE_MODEL_ID;
+  const huggingFaceSourceDetails = getHuggingFaceSourceDetails(huggingFaceConfig.source);
+  const huggingFaceSource = huggingFaceSourceDetails.runtimeSource;
+  const huggingFaceInput = huggingFaceConfig.source.trim();
+  const huggingFaceSourceIsNormalized = Boolean(huggingFaceInput && huggingFaceSource && huggingFaceInput !== huggingFaceSource);
+  const selectedGgufPreset = HUGGINGFACE_GGUF_PRESETS.find((preset) => preset.source === huggingFaceSource) || null;
+  const selectedGgufDownloadLabel = selectedGgufPreset ? `${selectedGgufPreset.downloadSizeGb} GB` : '';
+  const effectiveTechnicalModel = isHuggingFaceSelected
+    ? huggingFaceConfig.runtimeModel
+    : selectedModel.technicalName;
   const modelStatuses = aiSettings.modelStatuses || {};
   const selectedStatus = {
     status: MODEL_STATUS.NOT_INSTALLED,
@@ -812,7 +780,49 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
   const contextItems = requestContext.items;
   const statusLabel = MODEL_STATUS_LABELS[selectedStatus.status] || 'Not installed';
   const modelUnavailable = selectedStatus.status === MODEL_STATUS.UNAVAILABLE;
+  const modelNeedsConversion = selectedStatus.status === MODEL_STATUS.NEEDS_CONVERSION;
   const modelInstalling = selectedStatus.status === MODEL_STATUS.INSTALLING;
+  const prepareDisabled = prepareBusy || modelInstalling || (isHuggingFaceSelected && !huggingFaceSource);
+  const prepareButtonLabel = (() => {
+    if (prepareBusy || modelInstalling) {
+      return isHuggingFaceSelected ? 'Downloading...' : 'Preparing...';
+    }
+
+    if (isHuggingFaceSelected && !huggingFaceSource) {
+      return 'Configure source';
+    }
+
+    return isHuggingFaceSelected ? 'Download locally' : 'Prepare model';
+  })();
+  const modelStatusMessage = (() => {
+    if (isHuggingFaceSelected && !huggingFaceSource) {
+      return 'Add a Hugging Face repo or model reference before preparing this adapter.';
+    }
+
+    if (selectedStatus.lastError) {
+      return selectedStatus.lastError;
+    }
+
+    if (modelUnavailable) {
+      return `Start the local model service at ${aiSettings.ollamaBaseUrl || 'http://localhost:11434'}, then prepare the selected model.`;
+    }
+
+    if (modelNeedsConversion) {
+      return 'This source needs a GGUF repo/file or a local converted import before ROS can prepare the runtime alias.';
+    }
+
+    if (selectedStatus.status === MODEL_STATUS.NOT_INSTALLED) {
+      if (isHuggingFaceSelected) {
+        return selectedGgufDownloadLabel
+          ? `Download ${selectedGgufDownloadLabel} into the local Ollama runtime store before asking this model.`
+          : 'Download this GGUF source into the local Ollama runtime store before asking this model.';
+      }
+
+      return 'Prepare this model before asking it to respond from project memory.';
+    }
+
+    return '';
+  })();
 
   const updateAiSetting = (patch) => {
     updateWorkspaceData((current) => ({
@@ -825,6 +835,29 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
         },
       },
     }));
+  };
+
+  const updateHuggingFaceConfig = (patch) => {
+    updateAiSetting({
+      huggingFace: {
+        ...huggingFaceConfig,
+        ...patch,
+      },
+    });
+  };
+
+  const handleGgufPresetChange = (presetId) => {
+    const preset = HUGGINGFACE_GGUF_PRESETS.find((entry) => entry.id === presetId);
+
+    if (!preset) {
+      return;
+    }
+
+    updateHuggingFaceConfig({
+      source: preset.source,
+      displayName: preset.displayName,
+      runtimeModel: preset.runtimeModel,
+    });
   };
 
   useEffect(() => {
@@ -872,7 +905,7 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
   };
 
   const handlePrepareModel = async () => {
-    if (prepareBusy || modelInstalling) {
+    if (prepareDisabled) {
       return;
     }
 
@@ -966,8 +999,9 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
         {
           id: `local-error-${Date.now()}`,
           role: 'assistant',
-          content: 'Local model unavailable. You can still save a response manually.',
+          content: detail,
           citations: [],
+          error: true,
           createdAt: now(),
         },
       ]);
@@ -975,7 +1009,7 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
       updateModelStatus(selectedModelId, {
         status: MODEL_STATUS.UNAVAILABLE,
         lastCheckedAt: now(),
-        lastError: 'Local model unavailable. You can still save a response manually.',
+        lastError: detail,
         rawStatus: detail,
       });
       setOllamaStatus((current) => ({ ...current, status: 'unavailable' }));
@@ -1004,12 +1038,12 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
     captureMemoryItem({
       projectId: activeProject.id,
       kind: outputKind,
-      title: `${selectedModel.friendlyName} ${outputKind.replaceAll('-', ' ')} - ${new Date(generatedAt).toLocaleString()}`,
+      title: `${isHuggingFaceSelected ? huggingFaceConfig.displayName : selectedModel.friendlyName} ${outputKind.replaceAll('-', ' ')} - ${new Date(generatedAt).toLocaleString()}`,
       body: trimmed,
-      tags: ['model-output', selectedModel.technicalName, selectedModel.type, outputKind],
+      tags: ['model-output', effectiveTechnicalModel, selectedModel.type, outputKind],
       links: citations,
       modelId: selectedModel.id,
-      modelName: selectedModel.technicalName,
+      modelName: effectiveTechnicalModel,
       workflowId,
       generatedAt,
     });
@@ -1024,18 +1058,24 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
         <div className="grid gap-3 md:grid-cols-[0.95fr_1.05fr]">
           {MODEL_CATALOG.map((model) => {
             const active = selectedModel.id === model.id;
+            const modelDisplayName = model.id === HUGGINGFACE_MODEL_ID
+              ? `${huggingFaceConfig.displayName} / Modular Adapter`
+              : model.displayName;
             return (
               <button
                 key={model.id}
                 type="button"
-                onClick={() => updateAiSetting({ selectedModelId: model.id })}
+                onClick={() => updateAiSetting({
+                  selectedModelId: model.id,
+                  ...(model.id === HUGGINGFACE_MODEL_ID ? { advancedOpen: true, modelMode: 'advanced' } : {}),
+                })}
                 className={`rounded-md border p-3 text-left transition focus:outline-none focus:ring-1 focus:ring-cyan-100/25 ${
                   active ? theme.panelPrimary : theme.subPanelHover
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className={`text-sm font-semibold ${theme.heading}`}>{model.displayName}</div>
+                    <div className={`text-sm font-semibold ${theme.heading}`}>{modelDisplayName}</div>
                     <div className={`mt-1 text-[11px] uppercase tracking-[0.18em] ${theme.accent}`}>
                       {model.role}
                     </div>
@@ -1064,8 +1104,25 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
             <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
               Local model
             </div>
-            <div className={`mt-2 text-lg font-semibold ${theme.heading}`}>{selectedModel.displayName}</div>
+            <div className={`mt-2 text-lg font-semibold ${theme.heading}`}>
+              {isHuggingFaceSelected
+                ? `${huggingFaceConfig.displayName} / Modular Adapter`
+                : selectedModel.displayName}
+            </div>
             <p className="mt-2 text-sm leading-6 text-slate-400">{selectedModel.summary}</p>
+            {isHuggingFaceSelected ? (
+              <div className={`mt-3 rounded-md border px-3 py-2 text-xs leading-5 ${theme.linkTag}`}>
+                <div className="font-semibold uppercase tracking-[0.16em]">Hugging Face source</div>
+                <div className="mt-1 break-all text-slate-300">
+                  {huggingFaceSource || 'Open Advanced setup and add a Hugging Face model reference.'}
+                </div>
+                {selectedGgufDownloadLabel ? (
+                  <div className="mt-1 text-slate-300">
+                    Local download size: {selectedGgufDownloadLabel}.
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className={`rounded border px-2.5 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] ${theme.tag}`}>
                 {statusLabel}
@@ -1073,16 +1130,16 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
               <button
                 type="button"
                 onClick={handlePrepareModel}
-                disabled={prepareBusy || modelInstalling}
+                disabled={prepareDisabled}
                 className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${theme.primarySoftButton}`}
               >
                 <Download size={14} />
-                {prepareBusy || modelInstalling ? 'Preparing...' : 'Prepare model'}
+                {prepareButtonLabel}
               </button>
             </div>
-            {modelUnavailable ? (
+            {(modelUnavailable || modelNeedsConversion || modelStatusMessage) ? (
               <p className="mt-2 text-xs leading-5 text-amber-200/80">
-                Model unavailable. You can still save a response manually.
+                {modelStatusMessage || 'Model unavailable. You can still save a response manually.'}
               </p>
             ) : null}
             <button
@@ -1118,14 +1175,100 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
               />
             </label>
             <label className="block space-y-1 text-xs text-slate-500">
-              <span className="uppercase tracking-[0.2em]">Technical model</span>
+              <span className="uppercase tracking-[0.2em]">
+                {isHuggingFaceSelected ? 'Local alias' : 'Technical model'}
+              </span>
               <input
-                value={aiSettings.model || ''}
-                onChange={(event) => updateAiSetting({ model: event.target.value })}
-                placeholder={selectedModel.technicalName}
+                value={isHuggingFaceSelected ? huggingFaceConfig.runtimeModel : aiSettings.model || ''}
+                onChange={(event) => {
+                  if (isHuggingFaceSelected) {
+                    updateHuggingFaceConfig({ runtimeModel: event.target.value });
+                    return;
+                  }
+
+                  updateAiSetting({ model: event.target.value });
+                }}
+                placeholder={effectiveTechnicalModel}
                 className={`w-full rounded-md border px-3 py-2 text-sm outline-none ${theme.input}`}
               />
             </label>
+            {isHuggingFaceSelected ? (
+              <>
+                <label className="block space-y-1 text-xs text-slate-500">
+                  <span className="uppercase tracking-[0.2em]">GGUF preset</span>
+                  <select
+                    value={selectedGgufPreset?.id || ''}
+                    onChange={(event) => handleGgufPresetChange(event.target.value)}
+                    className={`w-full rounded-md border px-3 py-2 text-sm outline-none ${theme.input}`}
+                  >
+                    <option value="">Custom source</option>
+                    {HUGGINGFACE_GGUF_PRESETS.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.displayName} / {preset.quant} / {preset.downloadSizeGb} GB
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className={`rounded-md border px-3 py-2 text-xs leading-5 ${theme.linkTag}`}>
+                  <div className="font-semibold uppercase tracking-[0.16em]">
+                    {selectedGgufPreset ? selectedGgufPreset.sizeClass : 'Verified GGUF list'}
+                  </div>
+                  <div className="mt-1 text-slate-300">
+                    {selectedGgufPreset
+                      ? `${selectedGgufPreset.note} Download size: ${selectedGgufDownloadLabel}. Downloads locally into the Ollama runtime store. License: ${selectedGgufPreset.license}.`
+                      : 'Choose a curated GGUF repo to populate the source and local alias automatically.'}
+                  </div>
+                </div>
+                <label className="block space-y-1 text-xs text-slate-500">
+                  <span className="uppercase tracking-[0.2em]">Hugging Face model</span>
+                  <input
+                    value={huggingFaceConfig.source}
+                    onChange={(event) => updateHuggingFaceConfig({ source: event.target.value })}
+                    placeholder="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/tree/main"
+                    className={`w-full rounded-md border px-3 py-2 text-sm outline-none ${theme.input}`}
+                  />
+                </label>
+                <label className="block space-y-1 text-xs text-slate-500">
+                  <span className="uppercase tracking-[0.2em]">Display label</span>
+                  <input
+                    value={huggingFaceConfig.displayName}
+                    onChange={(event) => updateHuggingFaceConfig({ displayName: event.target.value })}
+                    placeholder="Hugging Face LLM"
+                    className={`w-full rounded-md border px-3 py-2 text-sm outline-none ${theme.input}`}
+                  />
+                </label>
+                <label className="block space-y-1 text-xs text-slate-500">
+                  <span className="uppercase tracking-[0.2em]">Context window</span>
+                  <input
+                    type="number"
+                    min="512"
+                    step="512"
+                    value={huggingFaceConfig.numCtx}
+                    onChange={(event) => updateHuggingFaceConfig({ numCtx: event.target.value })}
+                    className={`w-full rounded-md border px-3 py-2 text-sm outline-none ${theme.input}`}
+                  />
+                </label>
+                <label className="block space-y-1 text-xs text-slate-500">
+                  <span className="uppercase tracking-[0.2em]">Max response tokens</span>
+                  <input
+                    type="number"
+                    min="64"
+                    step="64"
+                    value={huggingFaceConfig.numPredict}
+                    onChange={(event) => updateHuggingFaceConfig({ numPredict: event.target.value })}
+                    className={`w-full rounded-md border px-3 py-2 text-sm outline-none ${theme.input}`}
+                  />
+                </label>
+                <label className="block space-y-1 text-xs text-slate-500 md:col-span-2">
+                  <span className="uppercase tracking-[0.2em]">Adapter system prompt</span>
+                  <textarea
+                    value={huggingFaceConfig.systemPrompt}
+                    onChange={(event) => updateHuggingFaceConfig({ systemPrompt: event.target.value })}
+                    className={`h-28 w-full resize-none rounded-md border px-3 py-2 text-sm outline-none ${theme.input}`}
+                  />
+                </label>
+              </>
+            ) : null}
             <div className={`rounded-md border p-3 text-sm leading-5 text-slate-400 ${theme.subPanel}`}>
               <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Runtime status</div>
               <div className={`mt-1 font-semibold ${theme.heading}`}>{ollamaStatus.status || selectedStatus.status || 'unknown'}</div>
@@ -1149,7 +1292,13 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
                 </pre>
                 <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded border border-white/12 bg-white/[0.055] p-3">
                   {[
-                    `technical model: ${selectedModel.technicalName}`,
+                    `technical model: ${effectiveTechnicalModel}`,
+                    isHuggingFaceSelected ? `huggingface source: ${huggingFaceSource || 'not configured'}` : '',
+                    isHuggingFaceSelected && huggingFaceSourceIsNormalized ? `input source: ${huggingFaceInput}` : '',
+                    isHuggingFaceSelected && huggingFaceSourceDetails.revision ? `source revision: ${huggingFaceSourceDetails.revision}` : '',
+                    isHuggingFaceSelected && huggingFaceSourceDetails.variant ? `source variant: ${huggingFaceSourceDetails.variant}` : '',
+                    isHuggingFaceSelected && selectedGgufDownloadLabel ? `download size: ${selectedGgufDownloadLabel}` : '',
+                    isHuggingFaceSelected ? 'download target: local Ollama runtime store' : '',
                     `status: ${selectedStatus.status}`,
                     `last checked: ${selectedStatus.lastCheckedAt || 'never'}`,
                     `last prepared: ${selectedStatus.lastPreparedAt || 'never'}`,
@@ -1221,7 +1370,7 @@ const AiConsole = ({ activeProject, ollamaStatus, setOllamaStatus, theme = DEFAU
                   ))}
                 </div>
               ) : null}
-              {message.role === 'assistant' && !message.content.startsWith('Local model unavailable') ? (
+              {message.role === 'assistant' && !message.error ? (
                 <button
                   type="button"
                   onClick={() => saveOutput(message.content, {
@@ -2043,8 +2192,7 @@ const OperatorCockpit = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [mode, setMode] = useState('operate');
   const [railCollapsed, setRailCollapsed] = useState(false);
-  const [controlCollapsed, setControlCollapsed] = useState(false);
-  const [activityCollapsed, setActivityCollapsed] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [deadManStep, setDeadManStep] = useState(0);
   const [deadManNotice, setDeadManNotice] = useState('');
   const [deadManWasArmed, setDeadManWasArmed] = useState(false);
@@ -2061,7 +2209,6 @@ const OperatorCockpit = ({
     limit: 16,
   });
   const cockpitTheme = useMemo(() => getCockpitTheme(data.settings.theme), [data.settings.theme]);
-  const leftCollapsed = controlCollapsed && activityCollapsed;
   const cockpitGridClass =
     leftCollapsed && railCollapsed
       ? 'xl:grid-cols-[3.5rem_minmax(560px,3.9fr)_3.5rem]'
@@ -2072,13 +2219,15 @@ const OperatorCockpit = ({
           : 'xl:grid-cols-[minmax(250px,0.8fr)_minmax(560px,2.4fr)_minmax(250px,0.85fr)]';
   const aiBaseUrl = data.settings.ai?.ollamaBaseUrl;
   const aiModelName = data.settings.ai?.model;
+  const aiHuggingFace = data.settings.ai?.huggingFace || {};
+  const aiHuggingFaceSource = aiHuggingFace.source || '';
+  const aiHuggingFaceRuntimeModel = aiHuggingFace.runtimeModel || '';
   const aiSelectedModelId = data.settings.ai?.selectedModelId || DEFAULT_MODEL_ID;
 
   useEffect(() => {
     if (deadManArmed && !deadManWasArmed) {
       setRailCollapsed(true);
-      setControlCollapsed(true);
-      setActivityCollapsed(true);
+      setLeftCollapsed(true);
       setDeadManStep(0);
       setDeadManNotice(`Armed ${DEAD_MAN_MODE_ID}: expand Intel Rail, then the left rail.`);
       setDeadManWasArmed(true);
@@ -2098,6 +2247,10 @@ const OperatorCockpit = ({
     checkModelStatus(aiSelectedModelId, {
       ollamaBaseUrl: aiBaseUrl,
       model: aiModelName,
+      huggingFace: {
+        source: aiHuggingFaceSource,
+        runtimeModel: aiHuggingFaceRuntimeModel,
+      },
     })
       .then((status) => {
         if (cancelled) {
@@ -2159,6 +2312,8 @@ const OperatorCockpit = ({
   }, [
     aiBaseUrl,
     aiModelName,
+    aiHuggingFaceRuntimeModel,
+    aiHuggingFaceSource,
     aiSelectedModelId,
     updateWorkspaceData,
   ]);
@@ -2219,8 +2374,7 @@ const OperatorCockpit = ({
       return;
     }
 
-    setControlCollapsed(nextCollapsed);
-    setActivityCollapsed(nextCollapsed);
+    setLeftCollapsed(nextCollapsed);
   };
   const handleRailCollapsedChange = (nextCollapsed) => {
     if (!registerDeadManPanelAction('rail', nextCollapsed ? 'collapse' : 'expand')) {
@@ -2228,22 +2382,6 @@ const OperatorCockpit = ({
     }
 
     setRailCollapsed(nextCollapsed);
-  };
-  const handleControlCollapsedChange = (nextCollapsed) => {
-    if (deadManArmed) {
-      handleLeftCollapsedChange(nextCollapsed);
-      return;
-    }
-
-    setControlCollapsed(nextCollapsed);
-  };
-  const handleActivityCollapsedChange = (nextCollapsed) => {
-    if (deadManArmed) {
-      handleLeftCollapsedChange(nextCollapsed);
-      return;
-    }
-
-    setActivityCollapsed(nextCollapsed);
   };
   const handleModeChange = (nextMode) => {
     if (isDeadManSequencePartial) {
@@ -2300,13 +2438,9 @@ const OperatorCockpit = ({
             data={data}
             memoryResults={memoryResults}
             ollamaStatus={ollamaStatus}
-            commandCollapsed={controlCollapsed}
-            activityCollapsed={activityCollapsed}
+            leftCollapsed={leftCollapsed}
             deadManArmed={deadManArmed}
-            deadManStep={deadManStep}
             deadManNotice={deadManNotice}
-            onToggleCommandCollapsed={handleControlCollapsedChange}
-            onToggleActivityCollapsed={handleActivityCollapsedChange}
             onToggleLeftCollapsed={handleLeftCollapsedChange}
             onCreateProject={createProject}
             onSelectProject={setActiveProject}
