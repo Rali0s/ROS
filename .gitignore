@@ -2,12 +2,18 @@
 .env
 .env.*
 !.env.example
+*.env
+.env.local
+.env.*.local
+.env*
+env
 
 # Dependencies
 node_modules/
 
 # Build output
 dist/
+dist-landing/
 coverage/
 .vite/
 
@@ -34,3 +40,16 @@ Thumbs.db
 .cache/
 tmp/
 temp/
+*.osae
+
+# Local notes and generated security material
+docs/*.txt
+security/certs/
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.csr
+*.cert
+*.ovpn

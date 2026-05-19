@@ -118,7 +118,7 @@ const createServerMapBoard = () => ({
     {
       ...createFlowNode('load-balancer', 0),
       label: 'Edge Proxy',
-      address: '10.0.10.12',
+      address: 'edge-proxy.local',
       environment: 'production',
       os: 'Ubuntu 24.04',
       service: 'nginx',
@@ -128,7 +128,7 @@ const createServerMapBoard = () => ({
     {
       ...createFlowNode('server', 1),
       label: 'App Server',
-      address: '10.0.20.14',
+      address: 'app-server.local',
       environment: 'production',
       os: 'Ubuntu 24.04',
       service: 'node api',
@@ -138,7 +138,7 @@ const createServerMapBoard = () => ({
     {
       ...createFlowNode('database', 2),
       label: 'Primary DB',
-      address: '10.0.30.21',
+      address: 'primary-db.local',
       environment: 'production',
       os: 'PostgreSQL',
       service: 'postgres',

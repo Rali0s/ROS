@@ -3,7 +3,7 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{Read, Write};
-use std::net::{Shutdown, TcpListener, TcpStream, UdpSocket};
+use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener, TcpStream, UdpSocket};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
@@ -13,6 +13,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const DISCOVERY_PORT: u16 = 45211;
 const SESSION_PORT: u16 = 45212;
 const FILES_PORT: u16 = 45213;
+const ROUTE_PROBE_HOST: &str = "one.one.one.one";
+const ROUTE_PROBE_PORT: u16 = 80;
 
 static LAN_STATE: Lazy<Mutex<LanPartyState>> = Lazy::new(|| Mutex::new(LanPartyState::default()));
 static LAN_GENERATION: AtomicUsize = AtomicUsize::new(0);
@@ -322,13 +324,13 @@ fn current_hostname() -> String {
 }
 
 fn local_ip() -> String {
-    UdpSocket::bind("0.0.0.0:0")
+    UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))
         .and_then(|socket| {
-            let _ = socket.connect("8.8.8.8:80");
+            let _ = socket.connect((ROUTE_PROBE_HOST, ROUTE_PROBE_PORT));
             socket.local_addr()
         })
         .map(|address| address.ip().to_string())
-        .unwrap_or_else(|_| "127.0.0.1".to_string())
+        .unwrap_or_else(|_| Ipv4Addr::LOCALHOST.to_string())
 }
 
 fn save_directory() -> PathBuf {
@@ -436,10 +438,10 @@ fn broadcast_presence() {
         peer: build_local_peer(),
     };
 
-    if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
+    if let Ok(socket) = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)) {
         let _ = socket.set_broadcast(true);
         if let Ok(serialized) = serde_json::to_vec(&packet) {
-            let _ = socket.send_to(&serialized, ("255.255.255.255", DISCOVERY_PORT));
+            let _ = socket.send_to(&serialized, SocketAddrV4::new(Ipv4Addr::BROADCAST, DISCOVERY_PORT));
         }
     }
 }
@@ -462,7 +464,7 @@ fn send_file_to_peer(ip: &str, packet: &FilePacket) {
 }
 
 fn run_discovery_listener(generation: usize) {
-    let Ok(socket) = UdpSocket::bind(("0.0.0.0", DISCOVERY_PORT)) else {
+    let Ok(socket) = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DISCOVERY_PORT)) else {
         return;
     };
     let _ = socket.set_broadcast(true);
@@ -540,7 +542,7 @@ fn handle_session_stream(mut stream: TcpStream) {
 }
 
 fn run_session_listener(generation: usize) {
-    let Ok(listener) = TcpListener::bind(("0.0.0.0", SESSION_PORT)) else {
+    let Ok(listener) = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, SESSION_PORT)) else {
         return;
     };
     let _ = listener.set_nonblocking(true);
@@ -607,7 +609,7 @@ fn handle_file_stream(mut stream: TcpStream) {
 }
 
 fn run_file_listener(generation: usize) {
-    let Ok(listener) = TcpListener::bind(("0.0.0.0", FILES_PORT)) else {
+    let Ok(listener) = TcpListener::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, FILES_PORT)) else {
         return;
     };
     let _ = listener.set_nonblocking(true);
@@ -653,13 +655,13 @@ pub fn scan(args: ScanLanArgs) -> LanPartyState {
         state.diagnostics.last_scan_at = iso_now();
     }
 
-    if let Ok(socket) = UdpSocket::bind("0.0.0.0:0") {
+    if let Ok(socket) = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)) {
         let request = DiscoveryPacket::Scan {
             requester: build_local_peer().hostname,
         };
         if let Ok(serialized) = serde_json::to_vec(&request) {
             let _ = socket.set_broadcast(true);
-            let _ = socket.send_to(&serialized, ("255.255.255.255", DISCOVERY_PORT));
+            let _ = socket.send_to(&serialized, SocketAddrV4::new(Ipv4Addr::BROADCAST, DISCOVERY_PORT));
             if let Some(ip) = args.target_ip.filter(|entry| !entry.trim().is_empty()) {
                 let _ = socket.send_to(&serialized, (ip.as_str(), DISCOVERY_PORT));
                 write_session_to_peer(&ip, &SessionPacket::Hello { peer: build_local_peer() });

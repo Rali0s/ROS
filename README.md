@@ -4,6 +4,23 @@ OSA Midnight Oil is a local-first desktop workspace built around a master-locked
 
 The project is designed to feel like a personal operations desk rather than a cloud app. Workspace data stays local, can be locked behind a passphrase, and is intended to remain useful offline.
 
+## Safe Public Usage
+
+This repository is intended to be safe to inspect, fork, and contribute to. It should contain source code, public documentation, sample placeholders, and release metadata only.
+
+- Do not commit vault snapshots, `.osae` files, `.env*` files, private notes, keys, certificates, tokens, real infrastructure addresses, or machine-specific paths.
+- Treat wallet, Nostr, PGP, profile, and workspace data as user-owned private material that belongs only in a local encrypted workspace.
+- Security and network-related examples are for defensive, authorized use only.
+- Local model features are optional and should point to user-controlled local services, not bundled private endpoints.
+
+## License
+
+OSA Midnight Oil is released under the [MIT License](LICENSE).
+
+## Contributing
+
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, and see [SECURITY.md](SECURITY.md) for vulnerability reporting guidance.
+
 ## What It Includes
 
 - `Overview`: high-level workspace status, counts, trust summary, and quick capture
@@ -49,7 +66,7 @@ npm run dev
 
 ### Native Desktop
 
-The primary desktop path lives under [src-tauri](/Users/premise/Documents/github/ROS/src-tauri) and uses Tauri 2.
+The primary desktop path lives under [src-tauri](src-tauri) and uses Tauri 2.
 
 ```bash
 npm run desktop:dev
@@ -103,6 +120,9 @@ For GitHub upstream, generated artifacts and local machine clutter should stay u
 - `dist/`
 - `src-tauri/target/`
 - `rust-core/target/`
+- `dist-landing/`
+- `*.osae`
+- working notes under `docs/*.txt`
 - `.DS_Store`
 - local `.env*` files
 

@@ -86,7 +86,7 @@ export const MODEL_CATALOG = [
     runtime: 'ollama-compatible',
     runtimeModel: 'DNS-v1',
     version: '1.0.0',
-    blueprintSource: '/Users/premise/Documents/Blueprint/res/defensive/DeepNimSec_v1.json',
+    blueprintSource: 'user-supplied-local-profile',
     baseModel: 'llama3.2:3b',
     summary: 'Normalizes project memory into DeepNimSec risk, evidence, controls, and safer next steps.',
     capabilities: [
@@ -142,7 +142,7 @@ export const MODEL_CATALOG = [
     runtime: 'ollama-compatible',
     runtimeModel: 'citizen-ai:latest',
     version: '1.0.0',
-    blueprintSource: '/Users/premise/Documents/Blueprint/ollama/citizen-ai.Modelfile',
+    blueprintSource: 'user-supplied-local-profile',
     baseModel: 'llama3.2:3b',
     summary: 'Creates lab-only defensive training scenarios, bias reviews, verification coaching, and after-action summaries.',
     capabilities: [

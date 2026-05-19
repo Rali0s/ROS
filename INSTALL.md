@@ -176,6 +176,6 @@ npm run site:beta:serve
 
 If you want cross-platform artifacts without building on each platform manually, use the workflow in:
 
-[/Users/premise/Documents/github/ROS/.github/workflows/beta-artifacts.yml](/Users/premise/Documents/github/ROS/.github/workflows/beta-artifacts.yml)
+[.github/workflows/beta-artifacts.yml](.github/workflows/beta-artifacts.yml)
 
 But for a **local Windows installer**, you must build on a Windows host.

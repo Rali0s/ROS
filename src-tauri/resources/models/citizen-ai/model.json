@@ -9,7 +9,7 @@
   "runtimeModel": "citizen-ai:latest",
   "baseModel": "llama3.2:3b",
   "artifactStatus": "profile-create",
-  "blueprintSource": "/Users/premise/Documents/Blueprint/ollama/citizen-ai.Modelfile",
+  "blueprintSource": "user-supplied-local-profile",
   "description": "Citizen-AI profile wired from Blueprint's lab-only defensive cognition Modelfile. ROS prepares this as an Ollama-compatible local profile; no proprietary model weights are bundled.",
   "capabilities": [
     "Lab scenarios",

@@ -15,7 +15,7 @@ import threading
 import time
 
 class EnrollmentServer:
-    def __init__(self, host='0.0.0.0', port=8443, cert_file='server.crt', key_file='server.key'):
+    def __init__(self, host='localhost', port=8443, cert_file='server.crt', key_file='server.key'):
         self.host = host
         self.port = port
         self.cert_file = cert_file

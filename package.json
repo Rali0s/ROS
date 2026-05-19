@@ -2,10 +2,11 @@
   "name": "osa-midnight-oil",
   "private": true,
   "version": "1.2.0",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "landing:dev": "vite ROS-Landing-Page --host 127.0.0.1",
+    "landing:dev": "vite ROS-Landing-Page --host localhost",
     "landing:build": "vite build ROS-Landing-Page --outDir ../dist-landing",
     "build": "npm run build:wasm || echo 'WASM build skipped' && vite build",
     "build:wasm": "cd rust-core && wasm-pack build --target web --out-dir pkg",
